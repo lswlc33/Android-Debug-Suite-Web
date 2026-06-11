@@ -103,6 +103,10 @@ class ScrcpyModule {
   onDeactivate() {
     if (this.running) this.stop();
   }
+
+  async disconnect() {
+    if (this.running) await this.stop();
+  }
   onPanelSwitch(panelId) {
     this._showPanel(panelId);
   }

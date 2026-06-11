@@ -96,6 +96,9 @@ const ADSMain = (() => {
     const overlay = document.getElementById('sidebar-overlay');
     if (overlay) overlay.addEventListener('click', closeSidebar);
 
+    const closeBtn = document.getElementById('sidebar-close');
+    if (closeBtn) closeBtn.addEventListener('click', closeSidebar);
+
     const items = document.querySelectorAll('.sidebar-item');
     items.forEach(item => {
       item.addEventListener('click', () => {
@@ -138,13 +141,19 @@ const ADSMain = (() => {
   async function switchMode(mode) {
     if (mode === currentMode) return;
 
+    const oldMode = currentMode;
+
     if (moduleInstances[currentMode] && typeof moduleInstances[currentMode].onDeactivate === 'function') {
       await moduleInstances[currentMode].onDeactivate();
     }
 
+    if (moduleInstances[currentMode] && typeof moduleInstances[currentMode].disconnect === 'function') {
+      try { await moduleInstances[currentMode].disconnect(); } catch (e) {}
+    }
+
     currentMode = mode;
     updateBottomBar();
-    console.log(`[ADS] 切换模式: ${mode}`);
+    console.log(`[ADS] 切换模式: ${oldMode} → ${mode}`);
 
     const contentArea = document.getElementById('main-content');
     if (contentArea) {
@@ -159,6 +168,7 @@ const ADSMain = (() => {
     }
 
     updateSidebarItems(mode);
+    updateConnectionState('disconnected');
   }
 
   function updateSidebarItems(mode) {

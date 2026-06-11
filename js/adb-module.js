@@ -381,7 +381,6 @@ class AdbModule {
     ADSMain.updateConnectionState('disconnected');
     document.getElementById('device-not-connected')?.classList.remove('hidden');
     document.getElementById('device-info')?.classList.add('hidden');
-    ADSUtils.toast('已断开连接', 'info');
   }
 
   async clearAdbKey() {

@@ -108,6 +108,8 @@
         }
       };
       navigator.usb.addEventListener('disconnect', this._disconnectHandler);
+
+      await new Promise(r => setTimeout(r, 50));
     }
 
     async disconnect() {
@@ -128,8 +130,8 @@
     }
 
     async _fillBuffer(minBytes) {
-      const MAX_RETRIES = 5;
-      const RETRY_DELAY = 100;
+      const MAX_RETRIES = 3;
+      const RETRY_DELAY = 200;
       
       while (this._readBuffer.length < minBytes) {
         if (this._closed || !this.usbDevice.opened) {
@@ -150,7 +152,7 @@
               this._closed = true;
               throw new Error('设备已断开连接');
             }
-            if (e.message && e.message.includes('transfer error')) {
+            if (attempt < MAX_RETRIES - 1) {
               await new Promise(r => setTimeout(r, RETRY_DELAY * (attempt + 1)));
               continue;
             }
@@ -285,7 +287,7 @@
       const identity = 'host::\x00';
       const payload = new TextEncoder().encode(identity);
       
-      const msg = new AdbMessage(CMD_CNXN, 1, MAX_PAYLOAD, payload.buffer);
+      const msg = new AdbMessage(CMD_CNXN, PROTOCOL_VERSION, MAX_PAYLOAD, payload.buffer);
       await this.transport.sendMessage(msg);
 
       let rsaKey = await this._getOrCreateKey();
@@ -303,6 +305,10 @@
           this.connected = true;
           this.deviceInfo = this._parseConnectPayload(msg.payload);
           return this.deviceInfo;
+        }
+
+        if (msg.command === CMD_STLS) {
+          throw new Error('设备要求 TLS 连接，当前浏览器不支持。请尝试使用普通 ADB 连接。');
         }
 
         if (msg.command === CMD_AUTH && msg.arg0 === ADB_AUTH_TOKEN) {
