@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="description" content="Android Debug Suite Web - 在浏览器中管理 Android 设备">
+  <title>Android Debug Suite Web</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📱</text></svg>">
+</head>
+<body>
+  <!-- Top Bar -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <button id="sidebar-toggle" title="菜单">☰</button>
+    </div>
+    <div class="topbar-center">Android Debug Suite Web</div>
+    <div class="topbar-right">
+      <div id="connection-area" class="connection-area clickable" title="点击连接设备">
+        <div class="connection-indicator" id="connection-indicator"></div>
+        <span id="connection-text">未连接 · 点击连接</span>
+      </div>
+      <button id="theme-toggle" title="切换主题">☀️</button>
+    </div>
+  </header>
+
+  <!-- Sidebar Overlay -->
+  <div id="sidebar-overlay" class="sidebar-overlay"></div>
+
+  <!-- Sidebar -->
+  <nav id="sidebar" class="sidebar">
+    <div class="sidebar-header">
+      <span class="logo">📱</span>
+      <span>功能导航</span>
+    </div>
+    <div class="sidebar-nav">
+      <div class="sidebar-section-title" data-for-modes="adb">ADB 功能</div>
+      <div class="sidebar-item active" data-panel="device-overview" data-modes="adb">
+        <span class="item-icon">📋</span>
+        <span>设备概览</span>
+      </div>
+      <div class="sidebar-item" data-panel="file-manager" data-modes="adb">
+        <span class="item-icon">📁</span>
+        <span>文件管理</span>
+      </div>
+      <div class="sidebar-item" data-panel="app-manager" data-modes="adb">
+        <span class="item-icon">📦</span>
+        <span>应用管理</span>
+      </div>
+      <div class="sidebar-item" data-panel="shell" data-modes="adb">
+        <span class="item-icon">💻</span>
+        <span>Shell 终端</span>
+      </div>
+      <div class="sidebar-item" data-panel="logcat" data-modes="adb">
+        <span class="item-icon">📜</span>
+        <span>Logcat 日志</span>
+      </div>
+      <div class="sidebar-item" data-panel="sideload" data-modes="adb">
+        <span class="item-icon">📦</span>
+        <span>ADB Sideload</span>
+      </div>
+
+      <div class="sidebar-section-title" data-for-modes="fastboot">Fastboot 功能</div>
+      <div class="sidebar-item" data-panel="info" data-modes="fastboot">
+        <span class="item-icon">📋</span>
+        <span>设备信息</span>
+      </div>
+      <div class="sidebar-item" data-panel="security" data-modes="fastboot">
+        <span class="item-icon">🔒</span>
+        <span>安全管理</span>
+      </div>
+      <div class="sidebar-item" data-panel="flash" data-modes="fastboot">
+        <span class="item-icon">📦</span>
+        <span>分区刷写</span>
+      </div>
+      <div class="sidebar-item" data-panel="boot" data-modes="fastboot">
+        <span class="item-icon">🚀</span>
+        <span>临时启动</span>
+      </div>
+      <div class="sidebar-item" data-panel="partition" data-modes="fastboot">
+        <span class="item-icon">🗂️</span>
+        <span>分区管理</span>
+      </div>
+      <div class="sidebar-item" data-panel="reboot" data-modes="fastboot">
+        <span class="item-icon">🔄</span>
+        <span>重启控制</span>
+      </div>
+      <div class="sidebar-item" data-panel="slots" data-modes="fastboot">
+        <span class="item-icon">🎰</span>
+        <span>槽位管理</span>
+      </div>
+      <div class="sidebar-item" data-panel="advanced" data-modes="fastboot">
+        <span class="item-icon">⚙️</span>
+        <span>高级命令</span>
+      </div>
+
+      <div class="sidebar-section-title" data-for-modes="scrcpy">Scrcpy 投屏</div>
+      <div class="sidebar-item" data-panel="scrcpy-main" data-modes="scrcpy">
+        <span class="item-icon">📺</span>
+        <span>投屏控制</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main id="main-content" class="main-content mode-adb">
+    <!-- Populated by modules -->
+  </main>
+
+  <!-- Bottom Bar -->
+  <footer class="bottombar">
+    <button class="bottom-tab active" data-mode="adb">
+      <span class="tab-icon">🔌</span>
+      <span class="tab-label">ADB</span>
+    </button>
+    <button class="bottom-tab" data-mode="fastboot">
+      <span class="tab-icon">⚡</span>
+      <span class="tab-label">Fastboot</span>
+    </button>
+    <button class="bottom-tab" data-mode="scrcpy">
+      <span class="tab-icon">📺</span>
+      <span class="tab-label">Scrcpy</span>
+    </button>
+  </footer>
+
+  <!-- Log Modal -->
+  <div id="log-modal" class="log-modal">
+    <div class="log-modal-overlay"></div>
+    <div class="log-modal-content">
+      <div class="log-modal-header">
+        <span class="log-modal-title">终端日志</span>
+        <span class="log-modal-badge" id="log-modal-badge">0</span>
+        <div class="log-modal-actions">
+          <button class="log-modal-btn" id="log-modal-clear" title="清空日志">🗑</button>
+          <button class="log-modal-btn" id="log-modal-close" title="关闭">✕</button>
+        </div>
+      </div>
+      <div class="log-modal-body" id="log-modal-body"></div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/utils.js"></script>
+  <script src="js/lib/adb.js"></script>
+  <script src="js/main.js"></script>
+  <!-- Fastboot and Scrcpy libs loaded on demand -->
+</body>
+</html>
