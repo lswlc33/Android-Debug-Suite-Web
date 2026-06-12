@@ -11,6 +11,7 @@ const ADSMain = (() => {
   let connectionState = 'disconnected';
   let loadedModules = { adb: false, fastboot: false, scrcpy: false };
   let moduleInstances = {};
+  let switching = false;
 
   const CONFIG_KEY = 'ads_config';
 
@@ -139,7 +140,8 @@ const ADSMain = (() => {
   }
 
   async function switchMode(mode) {
-    if (mode === currentMode) return;
+    if (mode === currentMode || switching) return;
+    switching = true;
 
     const oldMode = currentMode;
 
@@ -157,18 +159,28 @@ const ADSMain = (() => {
 
     const contentArea = document.getElementById('main-content');
     if (contentArea) {
-      contentArea.innerHTML = '';
+      contentArea.innerHTML = '<div class="empty-state"><div class="spinner-ring"></div><p style="color:var(--text-tertiary);margin-top:12px">加载中...</p></div>';
       contentArea.className = 'main-content mode-' + mode;
     }
 
-    await loadModule(mode);
+    try {
+      const wasLoaded = loadedModules[mode];
+      await loadModule(mode);
 
-    if (moduleInstances[mode] && typeof moduleInstances[mode].onActivate === 'function') {
-      await moduleInstances[mode].onActivate();
+      const inst = moduleInstances[mode];
+      if (inst) {
+        if (wasLoaded && typeof inst.render === 'function') {
+          inst.render();
+        } else if (typeof inst.onActivate === 'function') {
+          await inst.onActivate();
+        }
+      }
+
+      updateSidebarItems(mode);
+      updateConnectionState('disconnected');
+    } finally {
+      switching = false;
     }
-
-    updateSidebarItems(mode);
-    updateConnectionState('disconnected');
   }
 
   function updateSidebarItems(mode) {

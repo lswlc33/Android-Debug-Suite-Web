@@ -326,8 +326,7 @@
           }
 
           if (sentPublicKey) {
-            const pubKey = await this._exportPublicKey(rsaKey);
-            const encoded = this._encodePublicKey(pubKey);
+            const encoded = await this._exportPublicKey(rsaKey);
             
             if (authCallback && !callbackShown) {
               callbackShown = true;
@@ -645,9 +644,18 @@
       const stored = localStorage.getItem('adb_key');
       if (!stored) return null;
       try {
-        const jwk = JSON.parse(stored);
-        const pubKey = await crypto.subtle.importKey('jwk', { kty: jwk.kty, n: jwk.n, e: jwk.e, alg: 'RS256', ext: true },
-          { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-1' }, true, ['verify']);
+        const keyData = JSON.parse(stored);
+        let pubKey;
+        if (keyData.pkcs8) {
+          const pkcs8Buf = AdbDevice.prototype._base64ToBuffer(keyData.pkcs8);
+          const privateKey = await crypto.subtle.importKey('pkcs8', pkcs8Buf, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-1' }, true, ['sign']);
+          const jwk = await crypto.subtle.exportKey('jwk', privateKey);
+          pubKey = await crypto.subtle.importKey('jwk', { kty: jwk.kty, n: jwk.n, e: jwk.e, alg: 'RS256', ext: true },
+            { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-1' }, true, ['verify']);
+        } else {
+          pubKey = await crypto.subtle.importKey('jwk', { kty: keyData.kty, n: keyData.n, e: keyData.e, alg: 'RS256', ext: true },
+            { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-1' }, true, ['verify']);
+        }
         const spki = await crypto.subtle.exportKey('spki', pubKey);
         const hashBuffer = await crypto.subtle.digest('SHA-256', spki);
         const hashArray = new Uint8Array(hashBuffer);
@@ -688,6 +696,10 @@
       if (stored) {
         try {
           const keyData = JSON.parse(stored);
+          if (keyData.pkcs8) {
+            const pkcs8Buf = this._base64ToBuffer(keyData.pkcs8);
+            return await crypto.subtle.importKey('pkcs8', pkcs8Buf, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-1' }, false, ['sign']);
+          }
           return await crypto.subtle.importKey('jwk', keyData, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-1' }, false, ['sign']);
         } catch (e) { /* regenerate */ }
       }
@@ -695,8 +707,8 @@
         { name: 'RSASSA-PKCS1-v1_5', modulusLength: ADB_KEY_SIZE, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-1' },
         true, ['sign', 'verify']
       );
-      const jwk = await crypto.subtle.exportKey('jwk', keyPair.privateKey);
-      localStorage.setItem('adb_key', JSON.stringify(jwk));
+      const pkcs8 = await crypto.subtle.exportKey('pkcs8', keyPair.privateKey);
+      localStorage.setItem('adb_key', JSON.stringify({ pkcs8: this._bufferToBase64(pkcs8) }));
       return keyPair.privateKey;
     }
 
@@ -706,15 +718,77 @@
 
     async _exportPublicKey(key) {
       const stored = localStorage.getItem('adb_key');
-      const jwk = JSON.parse(stored);
-      const pubKey = await crypto.subtle.importKey('jwk', { kty: jwk.kty, n: jwk.n, e: jwk.e, alg: 'RS256', ext: true },
-        { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-1' }, true, ['verify']);
-      return await crypto.subtle.exportKey('spki', pubKey);
+      const keyData = JSON.parse(stored);
+      const pkcs8Buf = this._base64ToBuffer(keyData.pkcs8);
+      const privateKey = await crypto.subtle.importKey('pkcs8', pkcs8Buf, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-1' }, true, ['sign']);
+      const jwk = await crypto.subtle.exportKey('jwk', privateKey);
+      return this._encodeAdbPublicKey(jwk);
     }
 
-    _encodePublicKey(spkiBuffer) {
-      const b64 = btoa(String.fromCharCode(...new Uint8Array(spkiBuffer)));
-      return new TextEncoder().encode(b64 + '\0');
+    _encodeAdbPublicKey(jwk) {
+      const n = this._base64UrlToBigInt(jwk.n);
+      const e = this._base64UrlToBigInt(jwk.e);
+      const d = this._base64UrlToBigInt(jwk.d);
+
+      const buf = new ArrayBuffer(524);
+      const dv = new DataView(buf);
+      const u8 = new Uint8Array(buf);
+
+      const ANDROID_PUBKEY_MODULUS_SIZE = 256;
+      const ANDROID_PUBKEY_ENCODED_SIZE = 524;
+
+      const rr = (BigInt(2) ** BigInt(4096)) % n;
+
+      let offset = 0;
+      const nLen = this._bigIntToBytes(n, u8, offset, ANDROID_PUBKEY_MODULUS_SIZE);
+      offset += ANDROID_PUBKEY_MODULUS_SIZE;
+
+      const rrLen = this._bigIntToBytes(rr, u8, offset, ANDROID_PUBKEY_MODULUS_SIZE);
+      offset += ANDROID_PUBKEY_MODULUS_SIZE;
+
+      dv.setUint32(offset, Number(e), true);
+      offset += 4;
+
+      const username = 'unknown@unknown';
+      const encoded = this._bufferToBase64(u8.slice(0, ANDROID_PUBKEY_ENCODED_SIZE));
+      return new TextEncoder().encode(encoded + ' ' + username + '\0');
+    }
+
+    _base64UrlToBigInt(str) {
+      let b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4) b64 += '=';
+      const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      let result = BigInt(0);
+      for (let i = 0; i < bytes.length; i++) {
+        result = result * BigInt(256) + BigInt(bytes[i]);
+      }
+      return result;
+    }
+
+    _bigIntToBytes(num, target, offset, length) {
+      const hex = num.toString(16).padStart(length * 2, '0');
+      for (let i = 0; i < length; i++) {
+        target[offset + i] = parseInt(hex.substr(i * 2, 2), 16);
+      }
+      return length;
+    }
+
+    _bufferToBase64(buffer) {
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return btoa(binary);
+    }
+
+    _base64ToBuffer(base64) {
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return bytes.buffer;
     }
   }
 

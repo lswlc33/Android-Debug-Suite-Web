@@ -29,389 +29,380 @@ class FastbootModule {
     this._showCategory('info');
   }
 
+  render() {
+    const content = document.getElementById('main-content');
+    content.innerHTML = this._buildHTML();
+    this._bindEvents();
+    this._showCategory('info');
+    if (this.device && this.device.connected) {
+      document.getElementById('fb-not-connected')?.classList.add('hidden');
+      document.getElementById('fb-connected')?.classList.remove('hidden');
+    }
+  }
+
   _buildHTML() {
     return `
       <div class="fb-wrapper">
-        <!-- Connection Screen -->
-        <div id="fb-not-connected" class="fb-connect-screen">
-          <div class="fb-hero">
-            <div class="fb-hero-icon">⚡</div>
-            <h2>Fastboot 模式</h2>
-            <p class="fb-hero-desc">底层刷机工具，用于解锁、刷写分区、管理启动槽位等</p>
-            <div class="fb-hero-actions">
-              <button id="btn-fb-connect" class="btn btn-primary btn-xl">
-                <span class="btn-icon-left">🔌</span> 连接 Fastboot 设备
-              </button>
-              <button id="btn-fb-from-adb" class="btn btn-secondary btn-lg">
-                <span class="btn-icon-left">🔄</span> 从 ADB 重启到 Bootloader
-              </button>
-            </div>
-          </div>
-          <div class="fb-guide">
-            <h3>如何进入 Fastboot 模式</h3>
-            <div class="fb-guide-grid">
-              <div class="fb-guide-card">
-                <div class="fb-guide-icon">🔘</div>
-                <h4>按键组合</h4>
-                <p>关机状态下，同时按住 <kbd>电源键</kbd> + <kbd>音量下键</kbd> 直到进入 Bootloader</p>
-              </div>
-              <div class="fb-guide-card">
-                <div class="fb-guide-icon">💻</div>
-                <h4>ADB 命令</h4>
-                <p>设备连接 USB 后执行 <code>adb reboot bootloader</code></p>
-              </div>
-              <div class="fb-guide-card">
-                <div class="fb-guide-icon">⚙️</div>
-                <h4>前提条件</h4>
-                <p>需要浏览器支持 WebUSB（Chrome 61+ / Edge 79+）</p>
-              </div>
-            </div>
-          </div>
-        </div>
+        <!-- Category Navigation (Desktop only) -->
+        <nav class="fb-cat-nav" id="fb-cat-nav">
+          <button class="fb-cat-btn active" data-cat="info"><span class="fb-cat-icon">📋</span><span>设备信息</span></button>
+          <button class="fb-cat-btn" data-cat="security"><span class="fb-cat-icon">🔒</span><span>安全管理</span></button>
+          <button class="fb-cat-btn" data-cat="flash"><span class="fb-cat-icon">📦</span><span>分区刷写</span></button>
+          <button class="fb-cat-btn" data-cat="boot"><span class="fb-cat-icon">🚀</span><span>临时启动</span></button>
+          <button class="fb-cat-btn" data-cat="partition"><span class="fb-cat-icon">🗂️</span><span>分区管理</span></button>
+          <button class="fb-cat-btn" data-cat="reboot"><span class="fb-cat-icon">🔄</span><span>重启控制</span></button>
+          <button class="fb-cat-btn" data-cat="slots"><span class="fb-cat-icon">🎰</span><span>槽位管理</span></button>
+          <button class="fb-cat-btn" data-cat="advanced"><span class="fb-cat-icon">⚙️</span><span>高级命令</span></button>
+        </nav>
 
-        <!-- Main Dashboard (after connected) -->
-        <div id="fb-connected" class="fb-dashboard hidden">
-          <!-- Device Summary Bar -->
-          <div class="fb-summary-bar" id="fb-summary-bar">
-            <div class="fb-summary-item">
-              <span class="fb-summary-label">设备</span>
-              <span class="fb-summary-value" id="fb-sum-product">-</span>
+        <div id="panel-info" class="panel active">
+          <div class="panel-header"><h2>设备信息</h2></div>
+          <div class="panel-body">
+            <div id="fb-not-connected" class="fb-connect-screen">
+              <div class="fb-hero">
+                <div class="fb-hero-icon">⚡</div>
+                <h2>Fastboot 模式</h2>
+                <p class="fb-hero-desc">底层刷机工具，用于解锁、刷写分区、管理启动槽位等</p>
+                <div class="fb-hero-actions">
+                  <button id="btn-fb-connect" class="btn btn-primary btn-xl">
+                    <span class="btn-icon-left">🔌</span> 连接 Fastboot 设备
+                  </button>
+                </div>
+              </div>
+              <div class="fb-guide">
+                <h3>如何进入 Fastboot 模式</h3>
+                <div class="fb-guide-grid">
+                  <div class="fb-guide-card">
+                    <div class="fb-guide-icon">🔘</div>
+                    <h4>按键组合</h4>
+                    <p>关机状态下，同时按住 <kbd>电源键</kbd> + <kbd>音量下键</kbd> 直到进入 Bootloader</p>
+                  </div>
+                  <div class="fb-guide-card">
+                    <div class="fb-guide-icon">💻</div>
+                    <h4>ADB 命令</h4>
+                    <p>设备连接 USB 后执行 <code>adb reboot bootloader</code></p>
+                  </div>
+                  <div class="fb-guide-card">
+                    <div class="fb-guide-icon">⚙️</div>
+                    <h4>前提条件</h4>
+                    <p>需要浏览器支持 WebUSB（Chrome 61+ / Edge 79+）</p>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div class="fb-summary-item">
-              <span class="fb-summary-label">序列号</span>
-              <span class="fb-summary-value" id="fb-sum-serial">-</span>
-            </div>
-            <div class="fb-summary-item">
-              <span class="fb-summary-label">Bootloader</span>
-              <span class="fb-summary-value" id="fb-sum-unlock">-</span>
-            </div>
-            <div class="fb-summary-item">
-              <span class="fb-summary-label">电量</span>
-              <span class="fb-summary-value" id="fb-sum-battery">-</span>
-            </div>
-            <div class="fb-summary-item">
-              <span class="fb-summary-label">槽位</span>
-              <span class="fb-summary-value" id="fb-sum-slot">-</span>
-            </div>
-            <button id="btn-fb-disconnect" class="btn btn-sm btn-danger fb-disconnect-btn">断开</button>
-          </div>
 
-          <!-- Category Navigation -->
-          <nav class="fb-cat-nav" id="fb-cat-nav">
-            <button class="fb-cat-btn active" data-cat="info"><span class="fb-cat-icon">📋</span><span>设备信息</span></button>
-            <button class="fb-cat-btn" data-cat="security"><span class="fb-cat-icon">🔒</span><span>安全管理</span></button>
-            <button class="fb-cat-btn" data-cat="flash"><span class="fb-cat-icon">📦</span><span>分区刷写</span></button>
-            <button class="fb-cat-btn" data-cat="boot"><span class="fb-cat-icon">🚀</span><span>临时启动</span></button>
-            <button class="fb-cat-btn" data-cat="partition"><span class="fb-cat-icon">🗂️</span><span>分区管理</span></button>
-            <button class="fb-cat-btn" data-cat="reboot"><span class="fb-cat-icon">🔄</span><span>重启控制</span></button>
-            <button class="fb-cat-btn" data-cat="slots"><span class="fb-cat-icon">🎰</span><span>槽位管理</span></button>
-            <button class="fb-cat-btn" data-cat="advanced"><span class="fb-cat-icon">⚙️</span><span>高级命令</span></button>
-          </nav>
-
-          <!-- Category Panels -->
-          <div class="fb-cat-content">
-            <!-- INFO -->
-            <section id="fb-cat-info" class="fb-section active">
-              <div class="fb-section-header">
-                <h2>📋 设备详细信息</h2>
-                <button id="btn-fb-refresh-vars" class="btn btn-sm btn-secondary">刷新</button>
+            <div id="fb-connected" class="hidden">
+              <div class="fb-summary-bar" id="fb-summary-bar">
+                <div class="fb-summary-item">
+                  <span class="fb-summary-label">设备</span>
+                  <span class="fb-summary-value" id="fb-sum-product">-</span>
+                </div>
+                <div class="fb-summary-item">
+                  <span class="fb-summary-label">序列号</span>
+                  <span class="fb-summary-value" id="fb-sum-serial">-</span>
+                </div>
+                <div class="fb-summary-item">
+                  <span class="fb-summary-label">Bootloader</span>
+                  <span class="fb-summary-value" id="fb-sum-unlock">-</span>
+                </div>
+                <div class="fb-summary-item">
+                  <span class="fb-summary-label">电量</span>
+                  <span class="fb-summary-value" id="fb-sum-battery">-</span>
+                </div>
+                <div class="fb-summary-item">
+                  <span class="fb-summary-label">槽位</span>
+                  <span class="fb-summary-value" id="fb-sum-slot">-</span>
+                </div>
+                <button id="btn-fb-disconnect" class="btn btn-sm btn-danger fb-disconnect-btn">断开</button>
               </div>
               <div class="fb-vars-grid" id="fb-vars-grid"></div>
               <details class="fb-details">
                 <summary>查看全部变量 (getvar all)</summary>
                 <pre id="fb-all-vars" class="fb-pre"></pre>
               </details>
-            </section>
+            </div>
+          </div>
+        </div>
 
-            <!-- SECURITY -->
-            <section id="fb-cat-security" class="fb-section">
-              <div class="fb-section-header"><h2>🔒 安全管理</h2></div>
-              <div class="fb-card-grid">
-                <div class="fb-card fb-card-danger">
-                  <div class="fb-card-icon">🔓</div>
-                  <h3>解锁 Bootloader</h3>
-                  <p>允许刷入非官方固件。解锁将<strong>清除所有数据</strong>并可能使保修失效。</p>
-                  <div class="fb-card-status" id="fb-unlock-status"></div>
-                  <button id="btn-fb-unlock" class="btn btn-danger">解锁 Bootloader</button>
-                </div>
-                <div class="fb-card fb-card-warning">
-                  <div class="fb-card-icon">🔐</div>
-                  <h3>锁定 Bootloader</h3>
-                  <p>恢复锁定状态以通过安全验证。锁定也会<strong>清除数据</strong>。</p>
-                  <button id="btn-fb-lock" class="btn btn-warning">锁定 Bootloader</button>
-                </div>
-                <div class="fb-card">
-                  <div class="fb-card-icon">🏭</div>
-                  <h3>OEM 解锁/锁定</h3>
-                  <p>部分设备使用 OEM 命令控制解锁（三星等旧设备）。</p>
-                  <div class="action-btns">
-                    <button id="btn-fb-oem-unlock" class="btn btn-danger btn-sm">OEM 解锁</button>
-                    <button id="btn-fb-oem-lock" class="btn btn-warning btn-sm">OEM 锁定</button>
-                  </div>
+        <div id="panel-security" class="panel">
+          <div class="panel-header"><h2>安全管理</h2></div>
+          <div class="panel-body">
+            <div class="fb-card-grid">
+              <div class="fb-card fb-card-danger">
+                <div class="fb-card-icon">🔓</div>
+                <h3>解锁 Bootloader</h3>
+                <p>允许刷入非官方固件。解锁将<strong>清除所有数据</strong>并可能使保修失效。</p>
+                <div class="fb-card-status" id="fb-unlock-status"></div>
+                <button id="btn-fb-unlock" class="btn btn-danger">解锁 Bootloader</button>
+              </div>
+              <div class="fb-card fb-card-warning">
+                <div class="fb-card-icon">🔐</div>
+                <h3>锁定 Bootloader</h3>
+                <p>恢复锁定状态以通过安全验证。锁定也会<strong>清除数据</strong>。</p>
+                <button id="btn-fb-lock" class="btn btn-warning">锁定 Bootloader</button>
+              </div>
+              <div class="fb-card">
+                <div class="fb-card-icon">🏭</div>
+                <h3>OEM 解锁/锁定</h3>
+                <p>部分设备使用 OEM 命令控制解锁（三星等旧设备）。</p>
+                <div class="action-btns">
+                  <button id="btn-fb-oem-unlock" class="btn btn-danger btn-sm">OEM 解锁</button>
+                  <button id="btn-fb-oem-lock" class="btn btn-warning btn-sm">OEM 锁定</button>
                 </div>
               </div>
-            </section>
+            </div>
+          </div>
+        </div>
 
-            <!-- FLASH -->
-            <section id="fb-cat-flash" class="fb-section">
-              <div class="fb-section-header"><h2>📦 分区刷写</h2></div>
-              <div class="fb-card-grid">
-                <div class="fb-card fb-card-primary">
-                  <div class="fb-card-icon">🎯</div>
-                  <h3>单分区刷写</h3>
-                  <p>将镜像文件写入指定分区</p>
-                  <div class="fb-form">
-                    <div class="fb-form-group">
-                      <label>目标分区</label>
-                      <div class="fb-partition-picker">
-                        <select id="fb-partition-select">
-                          <optgroup label="启动相关">
-                            <option value="boot">boot</option>
-                            <option value="init_boot">init_boot</option>
-                            <option value="recovery">recovery</option>
-                            <option value="dtbo">dtbo</option>
-                            <option value="vbmeta">vbmeta</option>
-                            <option value="vbmeta_system">vbmeta_system</option>
-                          </optgroup>
-                          <optgroup label="系统分区">
-                            <option value="system">system</option>
-                            <option value="vendor">vendor</option>
-                            <option value="product">product</option>
-                            <option value="system_ext">system_ext</option>
-                            <option value="odm">odm</option>
-                            <option value="super">super</option>
-                          </optgroup>
-                          <optgroup label="其他">
-                            <option value="userdata">userdata</option>
-                            <option value="cache">cache</option>
-                            <option value="metadata">metadata</option>
-                            <option value="radio">radio</option>
-                            <option value="modem">modem</option>
-                          </optgroup>
-                          <optgroup label="自定义">
-                            <option value="__custom__">自定义分区名...</option>
-                          </optgroup>
-                        </select>
-                        <input type="text" id="fb-custom-partition" class="fb-input hidden" placeholder="输入分区名" />
-                      </div>
-                    </div>
-                    <div class="fb-form-group">
-                      <label>镜像文件</label>
-                      <div class="fb-file-row">
-                        <button id="btn-fb-select-img" class="btn btn-secondary">选择文件</button>
-                        <span id="fb-selected-file" class="fb-file-label">未选择</span>
-                      </div>
-                    </div>
-                    <div id="fb-flash-progress" class="fb-progress-area hidden"></div>
-                    <button id="btn-fb-flash" class="btn btn-primary btn-lg fb-action-btn">开始刷入</button>
-                  </div>
-                </div>
-
-                <div class="fb-card">
-                  <div class="fb-card-icon">📋</div>
-                  <h3>批量刷写</h3>
-                  <p>一次选择多个文件，按文件名自动匹配分区（如 boot.img → boot）</p>
-                  <div class="fb-form">
-                    <button id="btn-fb-batch-select" class="btn btn-secondary">选择多个 .img 文件</button>
-                    <div id="fb-batch-list" class="fb-batch-list"></div>
-                    <div id="fb-batch-progress" class="fb-progress-area hidden"></div>
-                    <button id="btn-fb-batch-flash" class="btn btn-primary fb-action-btn hidden">开始批量刷写</button>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <!-- BOOT -->
-            <section id="fb-cat-boot" class="fb-section">
-              <div class="fb-section-header"><h2>🚀 临时启动</h2></div>
-              <div class="fb-card-grid">
-                <div class="fb-card fb-card-primary">
-                  <div class="fb-card-icon">⚡</div>
-                  <h3>临时启动镜像</h3>
-                  <p>不写入 flash，直接从内存启动指定镜像。重启后失效。适用于测试 Recovery、内核等。</p>
-                  <div class="fb-form">
-                    <div class="fb-form-group">
-                      <label>内核镜像</label>
-                      <div class="fb-file-row">
-                        <button id="btn-fb-select-boot" class="btn btn-secondary">选择文件</button>
-                        <span id="fb-boot-file" class="fb-file-label">未选择</span>
-                      </div>
-                    </div>
-                    <button id="btn-fb-boot" class="btn btn-primary btn-lg fb-action-btn">临时启动</button>
-                  </div>
-                </div>
-                <div class="fb-card">
-                  <div class="fb-card-icon">💡</div>
-                  <h3>使用场景</h3>
-                  <ul class="fb-tips">
-                    <li>测试 TWRP Recovery 而不刷入</li>
-                    <li>临时启动自定义内核</li>
-                    <li>救援无法启动的设备</li>
-                    <li>刷入前预览功能</li>
-                  </ul>
-                </div>
-              </div>
-            </section>
-
-            <!-- PARTITION -->
-            <section id="fb-cat-partition" class="fb-section">
-              <div class="fb-section-header"><h2>🗂️ 分区管理</h2></div>
-              <div class="fb-card-grid">
-                <div class="fb-card fb-card-danger">
-                  <div class="fb-card-icon">🗑️</div>
-                  <h3>擦除分区</h3>
-                  <p>清除指定分区的全部数据，<strong>不可恢复</strong></p>
-                  <div class="fb-form">
-                    <div class="fb-form-group">
-                      <label>分区名</label>
-                      <select id="fb-erase-partition">
-                        <option value="cache">cache（缓存）</option>
-                        <option value="userdata">userdata（用户数据）</option>
-                        <option value="metadata">metadata（元数据）</option>
-                        <option value="dalvik_cache">dalvik_cache</option>
+        <div id="panel-flash" class="panel">
+          <div class="panel-header"><h2>分区刷写</h2></div>
+          <div class="panel-body">
+            <div class="fb-card-grid">
+              <div class="fb-card fb-card-primary">
+                <div class="fb-card-icon">🎯</div>
+                <h3>单分区刷写</h3>
+                <p>将镜像文件写入指定分区</p>
+                <div class="fb-form">
+                  <div class="fb-form-group">
+                    <label>目标分区</label>
+                    <div class="fb-partition-picker">
+                      <select id="fb-partition-select">
+                        <optgroup label="启动相关">
+                          <option value="boot">boot</option>
+                          <option value="init_boot">init_boot</option>
+                          <option value="recovery">recovery</option>
+                          <option value="dtbo">dtbo</option>
+                          <option value="vbmeta">vbmeta</option>
+                          <option value="vbmeta_system">vbmeta_system</option>
+                        </optgroup>
+                        <optgroup label="系统分区">
+                          <option value="system">system</option>
+                          <option value="vendor">vendor</option>
+                          <option value="product">product</option>
+                          <option value="system_ext">system_ext</option>
+                          <option value="odm">odm</option>
+                          <option value="super">super</option>
+                        </optgroup>
+                        <optgroup label="其他">
+                          <option value="userdata">userdata</option>
+                          <option value="cache">cache</option>
+                          <option value="metadata">metadata</option>
+                          <option value="radio">radio</option>
+                          <option value="modem">modem</option>
+                        </optgroup>
+                        <optgroup label="自定义">
+                          <option value="__custom__">自定义分区名...</option>
+                        </optgroup>
                       </select>
-                    </div>
-                    <button id="btn-fb-erase" class="btn btn-danger fb-action-btn">擦除分区</button>
-                  </div>
-                </div>
-                <div class="fb-card fb-card-warning">
-                  <div class="fb-card-icon">🧹</div>
-                  <h3>恢复出厂设置</h3>
-                  <p>擦除 userdata 和 metadata 分区，等同于恢复出厂设置。</p>
-                  <button id="btn-fb-factory-reset" class="btn btn-warning fb-action-btn">恢复出厂设置</button>
-                </div>
-                <div class="fb-card">
-                  <div class="fb-card-icon">📐</div>
-                  <h3>格式化数据分区</h3>
-                  <p>格式化 userdata 并重建文件系统，用于解决加密问题或 data 损坏。</p>
-                  <button id="btn-fb-format-data" class="btn btn-secondary fb-action-btn">格式化 data</button>
-                </div>
-              </div>
-            </section>
-
-            <!-- REBOOT -->
-            <section id="fb-cat-reboot" class="fb-section">
-              <div class="fb-section-header"><h2>🔄 重启控制</h2></div>
-              <div class="fb-card-grid fb-reboot-grid">
-                <button class="fb-reboot-card" id="btn-fb-reboot">
-                  <span class="fb-reboot-icon">🔄</span>
-                  <span class="fb-reboot-label">正常重启</span>
-                  <span class="fb-reboot-desc">进入系统</span>
-                </button>
-                <button class="fb-reboot-card" id="btn-fb-reboot-bl">
-                  <span class="fb-reboot-icon">⚡</span>
-                  <span class="fb-reboot-label">重启到 Bootloader</span>
-                  <span class="fb-reboot-desc">Fastboot 模式</span>
-                </button>
-                <button class="fb-reboot-card" id="btn-fb-reboot-rec">
-                  <span class="fb-reboot-icon">🔧</span>
-                  <span class="fb-reboot-label">重启到 Recovery</span>
-                  <span class="fb-reboot-desc">恢复模式</span>
-                </button>
-                <button class="fb-reboot-card" id="btn-fb-reboot-fastbootd">
-                  <span class="fb-reboot-icon">📱</span>
-                  <span class="fb-reboot-label">重启到 Fastbootd</span>
-                  <span class="fb-reboot-desc">用户空间 Fastboot</span>
-                </button>
-                <button class="fb-reboot-card" id="btn-fb-continue">
-                  <span class="fb-reboot-icon">▶️</span>
-                  <span class="fb-reboot-label">继续启动</span>
-                  <span class="fb-reboot-desc">跳过当前状态</span>
-                </button>
-                <button class="fb-reboot-card fb-reboot-danger" id="btn-fb-poweroff">
-                  <span class="fb-reboot-icon">⏻</span>
-                  <span class="fb-reboot-label">关机</span>
-                  <span class="fb-reboot-desc">关闭设备</span>
-                </button>
-              </div>
-            </section>
-
-            <!-- SLOTS -->
-            <section id="fb-cat-slots" class="fb-section">
-              <div class="fb-section-header"><h2>🎰 槽位管理 (A/B)</h2></div>
-              <div id="fb-slots-content">
-                <div class="fb-slots-overview" id="fb-slots-overview"></div>
-                <div class="fb-card-grid">
-                  <div class="fb-card">
-                    <div class="fb-card-icon">🇦</div>
-                    <h3>Slot A</h3>
-                    <div id="fb-slot-a-info" class="fb-slot-detail"></div>
-                    <button id="btn-fb-slot-a" class="btn btn-secondary fb-action-btn">切换到 Slot A</button>
-                  </div>
-                  <div class="fb-card">
-                    <div class="fb-card-icon">🇧</div>
-                    <h3>Slot B</h3>
-                    <div id="fb-slot-b-info" class="fb-slot-detail"></div>
-                    <button id="btn-fb-slot-b" class="btn btn-secondary fb-action-btn">切换到 Slot B</button>
-                  </div>
-                </div>
-                <div class="fb-card">
-                  <h3>常用操作</h3>
-                  <p>切换槽位后需要重启才能生效。如果某个槽位无法启动，可切换到另一个槽位进入系统。</p>
-                  <div class="action-btns">
-                    <button id="btn-fb-slot-a-reboot" class="btn btn-sm btn-secondary">切到 A 并重启</button>
-                    <button id="btn-fb-slot-b-reboot" class="btn btn-sm btn-secondary">切到 B 并重启</button>
-                  </div>
-                </div>
-              </div>
-              <div id="fb-no-slots" class="empty-state hidden">
-                <div class="empty-icon">ℹ️</div>
-                <h3>该设备不支持 A/B 槽位</h3>
-                <p>此设备没有 A/B 分区方案，无需管理槽位。</p>
-              </div>
-            </section>
-
-            <!-- ADVANCED -->
-            <section id="fb-cat-advanced" class="fb-section">
-              <div class="fb-section-header"><h2>⚙️ 高级命令</h2></div>
-              <div class="fb-card-grid">
-                <div class="fb-card fb-card-wide">
-                  <div class="fb-card-icon">💻</div>
-                  <h3>Fastboot 终端</h3>
-                  <p>直接发送原始 Fastboot 命令</p>
-                  <div class="fb-terminal">
-                    <div id="fb-terminal-output" class="fb-terminal-output"></div>
-                    <div class="fb-terminal-input-row">
-                      <span class="fb-terminal-prompt">fastboot</span>
-                      <input type="text" id="fb-cmd-input" class="fb-terminal-input" placeholder="输入命令，如: getvar product" autocomplete="off" />
-                      <button id="btn-fb-cmd-send" class="btn btn-primary btn-sm">发送</button>
+                      <input type="text" id="fb-custom-partition" class="fb-input hidden" placeholder="输入分区名" />
                     </div>
                   </div>
-                  <div class="fb-quick-cmds">
-                    <span class="fb-quick-label">快捷命令：</span>
-                    <button class="btn btn-xs btn-secondary fb-quick-cmd" data-cmd="getvar all">getvar all</button>
-                    <button class="btn btn-xs btn-secondary fb-quick-cmd" data-cmd="getvar product">getvar product</button>
-                    <button class="btn btn-xs btn-secondary fb-quick-cmd" data-cmd="getvar unlocked">getvar unlocked</button>
-                    <button class="btn btn-xs btn-secondary fb-quick-cmd" data-cmd="getvar current-slot">getvar current-slot</button>
-                    <button class="btn btn-xs btn-secondary fb-quick-cmd" data-cmd="getvar battery-soc">getvar battery</button>
-                    <button class="btn btn-xs btn-secondary fb-quick-cmd" data-cmd="getvar max-download-size">getvar max-dl</button>
+                  <div class="fb-form-group">
+                    <label>镜像文件</label>
+                    <div class="fb-file-row">
+                      <button id="btn-fb-select-img" class="btn btn-secondary">选择文件</button>
+                      <span id="fb-selected-file" class="fb-file-label">未选择</span>
+                    </div>
+                  </div>
+                  <div id="fb-flash-progress" class="fb-progress-area hidden"></div>
+                  <button id="btn-fb-flash" class="btn btn-primary btn-lg fb-action-btn">开始刷入</button>
+                </div>
+              </div>
+
+              <div class="fb-card">
+                <div class="fb-card-icon">📋</div>
+                <h3>批量刷写</h3>
+                <p>一次选择多个文件，按文件名自动匹配分区（如 boot.img → boot）</p>
+                <div class="fb-form">
+                  <button id="btn-fb-batch-select" class="btn btn-secondary">选择多个 .img 文件</button>
+                  <div id="fb-batch-list" class="fb-batch-list"></div>
+                  <div id="fb-batch-progress" class="fb-progress-area hidden"></div>
+                  <button id="btn-fb-batch-flash" class="btn btn-primary fb-action-btn hidden">开始批量刷写</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="panel-boot" class="panel">
+          <div class="panel-header"><h2>临时启动</h2></div>
+          <div class="panel-body">
+            <div class="fb-card-grid">
+              <div class="fb-card fb-card-primary">
+                <div class="fb-card-icon">⚡</div>
+                <h3>临时启动镜像</h3>
+                <p>不写入 flash，直接从内存启动指定镜像。重启后失效。适用于测试 Recovery、内核等。</p>
+                <div class="fb-form">
+                  <div class="fb-form-group">
+                    <label>内核镜像</label>
+                    <div class="fb-file-row">
+                      <button id="btn-fb-select-boot" class="btn btn-secondary">选择 .img 文件</button>
+                      <span id="fb-boot-file" class="fb-file-label">未选择</span>
+                    </div>
+                  </div>
+                  <button id="btn-fb-boot" class="btn btn-primary fb-action-btn">临时启动</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="panel-partition" class="panel">
+          <div class="panel-header"><h2>分区管理</h2></div>
+          <div class="panel-body">
+            <div class="fb-card-grid">
+              <div class="fb-card fb-card-danger">
+                <div class="fb-card-icon">🗑️</div>
+                <h3>擦除分区</h3>
+                <p>擦除指定分区的所有数据</p>
+                <div class="fb-form">
+                  <div class="fb-form-group">
+                    <label>目标分区</label>
+                    <select id="fb-erase-partition">
+                      <option value="userdata">userdata</option>
+                      <option value="cache">cache</option>
+                      <option value="metadata">metadata</option>
+                      <option value="system">system</option>
+                      <option value="vendor">vendor</option>
+                    </select>
+                  </div>
+                  <button id="btn-fb-erase" class="btn btn-danger fb-action-btn">擦除分区</button>
+                </div>
+              </div>
+              <div class="fb-card fb-card-danger">
+                <div class="fb-card-icon">🏭</div>
+                <h3>恢复出厂设置</h3>
+                <p>擦除 userdata 和 metadata，等同于恢复出厂设置。</p>
+                <button id="btn-fb-factory-reset" class="btn btn-danger">恢复出厂设置</button>
+              </div>
+              <div class="fb-card">
+                <div class="fb-card-icon">💾</div>
+                <h3>格式化 data</h3>
+                <p>格式化 userdata 分区并重建文件系统（加密设备需要）。</p>
+                <button id="btn-fb-format-data" class="btn btn-secondary">格式化 data</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="panel-reboot" class="panel">
+          <div class="panel-header"><h2>重启控制</h2></div>
+          <div class="panel-body">
+            <div class="fb-card-grid fb-reboot-grid">
+              <button class="fb-reboot-card" id="btn-fb-reboot">
+                <span class="fb-reboot-icon">🔄</span>
+                <span class="fb-reboot-label">正常重启</span>
+                <span class="fb-reboot-desc">进入系统</span>
+              </button>
+              <button class="fb-reboot-card" id="btn-fb-reboot-bl">
+                <span class="fb-reboot-icon">⚡</span>
+                <span class="fb-reboot-label">重启到 Bootloader</span>
+                <span class="fb-reboot-desc">Fastboot 模式</span>
+              </button>
+              <button class="fb-reboot-card" id="btn-fb-reboot-rec">
+                <span class="fb-reboot-icon">🔧</span>
+                <span class="fb-reboot-label">重启到 Recovery</span>
+                <span class="fb-reboot-desc">恢复模式</span>
+              </button>
+              <button class="fb-reboot-card" id="btn-fb-reboot-fastbootd">
+                <span class="fb-reboot-icon">📱</span>
+                <span class="fb-reboot-label">重启到 Fastbootd</span>
+                <span class="fb-reboot-desc">用户空间 Fastboot</span>
+              </button>
+              <button class="fb-reboot-card" id="btn-fb-continue">
+                <span class="fb-reboot-icon">▶️</span>
+                <span class="fb-reboot-label">继续启动</span>
+                <span class="fb-reboot-desc">跳过当前状态</span>
+              </button>
+              <button class="fb-reboot-card fb-reboot-danger" id="btn-fb-poweroff">
+                <span class="fb-reboot-icon">⏻</span>
+                <span class="fb-reboot-label">关机</span>
+                <span class="fb-reboot-desc">关闭设备</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div id="panel-slots" class="panel">
+          <div class="panel-header"><h2>槽位管理</h2></div>
+          <div class="panel-body">
+            <div id="fb-slots-overview" class="fb-slots-overview">
+              <div class="fb-slot-indicator">
+                <div class="fb-slot-dot" id="fb-slot-a">A</div>
+                <div class="fb-slot-dot" id="fb-slot-b">B</div>
+              </div>
+              <div class="fb-slot-current" id="fb-slot-current">当前槽位: -</div>
+            </div>
+            <div class="fb-card-grid">
+              <div class="fb-card">
+                <div class="fb-card-icon">🎰</div>
+                <h3>切换槽位</h3>
+                <p>切换活动槽位后需要重启生效。</p>
+                <div class="action-btns">
+                  <button id="btn-fb-slot-a-reboot" class="btn btn-sm btn-secondary">切到 A 并重启</button>
+                  <button id="btn-fb-slot-b-reboot" class="btn btn-sm btn-secondary">切到 B 并重启</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="panel-advanced" class="panel">
+          <div class="panel-header"><h2>高级命令</h2></div>
+          <div class="panel-body">
+            <div class="fb-card-grid">
+              <div class="fb-card fb-card-wide">
+                <div class="fb-card-icon">💻</div>
+                <h3>命令终端</h3>
+                <p>直接发送 fastboot 命令</p>
+                <div class="fb-terminal">
+                  <div id="fb-terminal-output" class="fb-terminal-output"></div>
+                  <div class="fb-terminal-input-row">
+                    <span class="fb-terminal-prompt">fastboot</span>
+                    <input type="text" id="fb-cmd-input" class="fb-terminal-input" placeholder="输入命令，如: getvar product" autocomplete="off" />
+                    <button id="btn-fb-cmd-send" class="btn btn-primary btn-sm">发送</button>
                   </div>
                 </div>
-                <div class="fb-card">
-                  <div class="fb-card-icon">🔍</div>
-                  <h3>变量查询</h3>
-                  <p>查询指定的 Fastboot 变量</p>
-                  <div class="fb-form">
-                    <div class="fb-form-group">
+                <div class="fb-quick-cmds">
+                  <span class="fb-quick-label">快捷命令:</span>
+                  <button class="btn btn-xs btn-secondary fb-quick-cmd" data-cmd="getvar all">getvar all</button>
+                  <button class="btn btn-xs btn-secondary fb-quick-cmd" data-cmd="getvar product">getvar product</button>
+                  <button class="btn btn-xs btn-secondary fb-quick-cmd" data-cmd="getvar unlocked">getvar unlocked</button>
+                  <button class="btn btn-xs btn-secondary fb-quick-cmd" data-cmd="getvar current-slot">getvar current-slot</button>
+                  <button class="btn btn-xs btn-secondary fb-quick-cmd" data-cmd="getvar battery-soc">getvar battery</button>
+                  <button class="btn btn-xs btn-secondary fb-quick-cmd" data-cmd="getvar max-download-size">getvar max-dl</button>
+                </div>
+              </div>
+
+              <div class="fb-card">
+                <div class="fb-card-icon">🔍</div>
+                <h3>查询变量</h3>
+                <p>查询单个 fastboot 变量</p>
+                <div class="fb-form">
+                  <div class="fb-form-group">
+                    <div class="fb-partition-picker">
                       <input type="text" id="fb-getvar-key" class="fb-input" placeholder="变量名，如: product" />
+                      <button id="btn-fb-getvar" class="btn btn-secondary">查询</button>
                     </div>
-                    <button id="btn-fb-getvar" class="btn btn-secondary">查询</button>
                     <div id="fb-getvar-result" class="fb-result hidden"></div>
                   </div>
                 </div>
-                <div class="fb-card">
-                  <div class="fb-card-icon">🏷️</div>
-                  <h3>OEM 命令</h3>
-                  <p>发送自定义 OEM 命令（设备相关，功能因厂商而异）</p>
-                  <div class="fb-form">
-                    <div class="fb-form-group">
+              </div>
+
+              <div class="fb-card">
+                <div class="fb-card-icon">⚙️</div>
+                <h3>OEM 命令</h3>
+                <p>发送自定义 OEM 命令</p>
+                <div class="fb-form">
+                  <div class="fb-form-group">
+                    <div class="fb-partition-picker">
                       <input type="text" id="fb-oem-cmd" class="fb-input" placeholder="命令，如: unlock" />
+                      <button id="btn-fb-oem-send" class="btn btn-secondary">发送</button>
                     </div>
-                    <button id="btn-fb-oem-send" class="btn btn-secondary">发送 OEM 命令</button>
                   </div>
                 </div>
               </div>
-            </section>
+            </div>
           </div>
         </div>
       </div>
@@ -423,14 +414,11 @@ class FastbootModule {
     const $$ = (s) => document.querySelectorAll(s);
 
     $('#btn-fb-connect')?.addEventListener('click', () => this.connect());
-    $('#btn-fb-from-adb')?.addEventListener('click', () => this.rebootToBootloader());
     $('#btn-fb-disconnect')?.addEventListener('click', () => this.disconnect());
 
     $$('.fb-cat-btn').forEach(btn => {
       btn.addEventListener('click', () => this._showCategory(btn.dataset.cat));
     });
-
-    $('#btn-fb-refresh-vars')?.addEventListener('click', () => this.refreshVars());
 
     $('#btn-fb-unlock')?.addEventListener('click', () => this.unlock());
     $('#btn-fb-lock')?.addEventListener('click', () => this.lock());
@@ -486,11 +474,13 @@ class FastbootModule {
 
   _showCategory(cat) {
     this.currentCategory = cat;
-    document.querySelectorAll('.fb-section').forEach(s => s.classList.remove('active'));
-    document.querySelectorAll('.fb-cat-btn').forEach(b => b.classList.remove('active'));
-    const section = document.getElementById('fb-cat-' + cat);
-    if (section) section.classList.add('active');
-    document.querySelector(`.fb-cat-btn[data-cat="${cat}"]`)?.classList.add('active');
+    document.querySelectorAll('.fb-wrapper .panel').forEach(p => p.classList.remove('active'));
+    const panel = document.getElementById('panel-' + cat);
+    if (panel) panel.classList.add('active');
+
+    document.querySelectorAll('.fb-cat-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.cat === cat);
+    });
   }
 
   onActivate() {
@@ -498,9 +488,10 @@ class FastbootModule {
   }
   onDeactivate() {}
   onPanelSwitch(panelId) {
-    // 始终显示 dashboard 以便预览内容
-    document.getElementById('fb-not-connected')?.classList.add('hidden');
-    document.getElementById('fb-connected')?.classList.remove('hidden');
+    if (this.device && this.device.connected) {
+      document.getElementById('fb-not-connected')?.classList.add('hidden');
+      document.getElementById('fb-connected')?.classList.remove('hidden');
+    }
     this._showCategory(panelId);
   }
 
@@ -733,7 +724,7 @@ class FastbootModule {
     if (!this.device) return;
     const ok = await ADSUtils.confirmDialog(
       '⚠️ 解锁 Bootloader',
-      '解锁将：\n• 清除所有数据（恢复出厂）\n• 可能使保修失效\n• 降低设备安全性\n\n确定继续？',
+      '即将执行：\n\nfastboot flashing unlock\n或 fastboot oem unlock\n\n解锁将：\n• 清除所有数据（恢复出厂）\n• 可能使保修失效\n• 降低设备安全性\n\n确定继续？',
       '确认解锁'
     );
     if (!ok) return;
@@ -754,7 +745,7 @@ class FastbootModule {
 
   async lock() {
     if (!this.device) return;
-    const ok = await ADSUtils.confirmDialog('锁定 Bootloader', '锁定也会清除数据。确定继续？', '确认锁定');
+    const ok = await ADSUtils.confirmDialog('⚠️ 锁定 Bootloader', '即将执行：\n\nfastboot flashing lock\n\n锁定也会清除数据。确定继续？', '确认锁定');
     if (!ok) return;
     try {
       const result = await this.device.flashingLock();
@@ -768,7 +759,7 @@ class FastbootModule {
 
   async oemUnlock() {
     if (!this.device) return;
-    const ok = await ADSUtils.confirmDialog('OEM 解锁', '发送 oem unlock 命令。确定？', '发送');
+    const ok = await ADSUtils.confirmDialog('⚠️ OEM 解锁', '即将执行：\n\nfastboot oem unlock\n\n此操作将解锁 Bootloader，可能导致数据丢失。确定要执行吗？', '解锁');
     if (!ok) return;
     try {
       const r = await this.device.oemUnlock();
@@ -780,7 +771,7 @@ class FastbootModule {
 
   async oemLock() {
     if (!this.device) return;
-    const ok = await ADSUtils.confirmDialog('OEM 锁定', '发送 oem lock 命令。确定？', '发送');
+    const ok = await ADSUtils.confirmDialog('⚠️ OEM 锁定', '即将执行：\n\nfastboot oem lock\n\n此操作将锁定 Bootloader。确定要执行吗？', '锁定');
     if (!ok) return;
     try {
       const r = await this.device.oemLock();
@@ -805,7 +796,7 @@ class FastbootModule {
       partition = document.getElementById('fb-custom-partition')?.value?.trim();
       if (!partition) return ADSUtils.toast('请输入分区名', 'warning');
     }
-    const ok = await ADSUtils.confirmDialog('刷入分区', `${this._flashFile.name} → ${partition}\n\n确定刷入？`, '刷入');
+    const ok = await ADSUtils.confirmDialog('⚠️ 刷入分区', `即将执行：\n\nfastboot flash ${partition} ${this._flashFile.name}\n\n确定要刷入吗？`, '刷入');
     if (!ok) return;
     await this._doFlash(partition, this._flashFile);
   }
@@ -864,9 +855,9 @@ class FastbootModule {
     if (!this.device || this._batchFiles.length === 0) return;
     const summary = this._batchFiles.map(f => {
       const p = f.name.replace(/\.(img|bin|zip)$/i, '');
-      return `${f.name} → ${p}`;
+      return `fastboot flash ${p} ${f.name}`;
     }).join('\n');
-    const ok = await ADSUtils.confirmDialog('批量刷写', `将刷入 ${this._batchFiles.length} 个分区：\n\n${summary}\n\n确定？`, '开始刷写');
+    const ok = await ADSUtils.confirmDialog('⚠️ 批量刷写', `即将执行：\n\n${summary}\n\n确定要批量刷写 ${this._batchFiles.length} 个分区吗？`, '开始刷写');
     if (!ok) return;
 
     const progressContainer = document.getElementById('fb-batch-progress');
@@ -901,7 +892,7 @@ class FastbootModule {
   async bootImage() {
     if (!this.device) return ADSUtils.toast('设备未连接', 'warning');
     if (!this._bootFile) return ADSUtils.toast('请先选择镜像', 'warning');
-    const ok = await ADSUtils.confirmDialog('临时启动', `从 ${this._bootFile.name} 临时启动？\n重启后失效。`, '启动');
+    const ok = await ADSUtils.confirmDialog('临时启动', `即将执行：\n\nfastboot boot ${this._bootFile.name}\n\n从内存临时启动，重启后失效。确定吗？`, '启动');
     if (!ok) return;
     try {
       const data = await ADSUtils.readFileAsArrayBuffer(this._bootFile);
@@ -916,7 +907,7 @@ class FastbootModule {
     if (!this.device) return ADSUtils.toast('设备未连接', 'warning');
     const partition = document.getElementById('fb-erase-partition')?.value;
     if (!partition) return;
-    const ok = await ADSUtils.confirmDialog('⚠️ 擦除分区', `确定擦除 ${partition}？\n此操作不可恢复！`, '擦除');
+    const ok = await ADSUtils.confirmDialog('⚠️ 擦除分区', `即将执行：\n\nfastboot erase ${partition}\n\n此操作不可恢复！确定要擦除 ${partition} 吗？`, '擦除');
     if (!ok) return;
     try {
       await this.device.erase(partition);
@@ -928,7 +919,7 @@ class FastbootModule {
 
   async factoryReset() {
     if (!this.device) return ADSUtils.toast('设备未连接', 'warning');
-    const ok = await ADSUtils.confirmDialog('⚠️ 恢复出厂设置', '将擦除 userdata 和 metadata。\n所有数据将丢失！', '确认恢复');
+    const ok = await ADSUtils.confirmDialog('⚠️ 恢复出厂设置', '即将执行：\n\nfastboot erase userdata\nfastboot erase metadata\n\n所有数据将丢失！确定要恢复出厂设置吗？', '确认恢复');
     if (!ok) return;
     try {
       await this.device.erase('userdata');
@@ -941,7 +932,7 @@ class FastbootModule {
 
   async formatData() {
     if (!this.device) return ADSUtils.toast('设备未连接', 'warning');
-    const ok = await ADSUtils.confirmDialog('格式化 data', '格式化 userdata 分区并重建文件系统。', '格式化');
+    const ok = await ADSUtils.confirmDialog('格式化 data', '即将执行：\n\nfastboot oem format userdata\n\n确定要格式化 userdata 分区吗？', '格式化');
     if (!ok) return;
     try {
       await this.device.oem('format userdata');
@@ -953,6 +944,9 @@ class FastbootModule {
 
   async reboot(target) {
     if (!this.device) return;
+    const cmd = target ? `fastboot reboot ${target}` : 'fastboot reboot';
+    const ok = await ADSUtils.confirmDialog('⚠️ 重启设备', `即将执行：\n\n${cmd}\n\n确定要重启吗？`, '重启');
+    if (!ok) return;
     try {
       await this.device.reboot(target);
       ADSUtils.toast('设备正在重启...', 'info');
@@ -964,6 +958,8 @@ class FastbootModule {
 
   async continueBoot() {
     if (!this.device) return;
+    const ok = await ADSUtils.confirmDialog('继续启动', '即将执行：\n\nfastboot continue\n\n确定要继续启动吗？', '继续');
+    if (!ok) return;
     try {
       await this.device.continue();
       ADSUtils.toast('继续启动...', 'info');
@@ -975,7 +971,7 @@ class FastbootModule {
 
   async powerOff() {
     if (!this.device) return;
-    const ok = await ADSUtils.confirmDialog('关机', '确定关闭设备？', '关机');
+    const ok = await ADSUtils.confirmDialog('⚠️ 关机', '即将执行：\n\nfastboot oem poweroff\n\n确定要关闭设备吗？', '关机');
     if (!ok) return;
     try {
       await this.device.oem('poweroff');
@@ -986,14 +982,14 @@ class FastbootModule {
         await this.device.reboot('poweroff');
         this.disconnect();
       } catch (e2) {
-        ADSUtils.toast('关机失败: ' + e.message, 'error');
+        ADSUtils.toast('关机失败: ' + e2.message, 'error');
       }
     }
   }
 
   async setActiveSlot(slot) {
     if (!this.device) return;
-    const ok = await ADSUtils.confirmDialog('切换槽位', `切换到 Slot ${slot.toUpperCase()}？`, '切换');
+    const ok = await ADSUtils.confirmDialog('切换槽位', `即将执行：\n\nfastboot set_active ${slot}\n\n确定要切换到 Slot ${slot.toUpperCase()} 吗？`, '切换');
     if (!ok) return;
     try {
       const r = await this.device.setActiveSlot(slot);
@@ -1007,7 +1003,7 @@ class FastbootModule {
 
   async setActiveSlotAndReboot(slot) {
     if (!this.device) return;
-    const ok = await ADSUtils.confirmDialog('切换并重启', `切换到 Slot ${slot.toUpperCase()} 并重启？`, '切换并重启');
+    const ok = await ADSUtils.confirmDialog('切换并重启', `即将执行：\n\nfastboot set_active ${slot}\nfastboot reboot\n\n确定要切换到 Slot ${slot.toUpperCase()} 并重启吗？`, '切换并重启');
     if (!ok) return;
     try {
       await this.device.setActiveSlot(slot);
@@ -1027,7 +1023,15 @@ class FastbootModule {
     const cmd = input.value.trim();
     if (!cmd) return;
 
+    const dangerous = ['flash', 'erase', 'oem', 'reboot', 'continue', 'set_active'];
+    const isDangerous = dangerous.some(d => cmd.startsWith(d));
+    if (isDangerous) {
+      const ok = await ADSUtils.confirmDialog('⚠️ 高危命令', `即将执行：\n\nfastboot ${cmd}\n\n此操作可能不可逆，确定要执行吗？`, '执行');
+      if (!ok) return;
+    }
+
     this._cmdHistory.push(cmd);
+    if (this._cmdHistory.length > 200) this._cmdHistory.shift();
     this._cmdHistoryIdx = this._cmdHistory.length;
     input.value = '';
 
@@ -1095,6 +1099,8 @@ class FastbootModule {
     if (!this.device) return ADSUtils.toast('设备未连接', 'warning');
     const cmd = document.getElementById('fb-oem-cmd')?.value?.trim();
     if (!cmd) return ADSUtils.toast('请输入命令', 'warning');
+    const ok = await ADSUtils.confirmDialog('⚠️ OEM 命令', `即将执行：\n\nfastboot oem ${cmd}\n\n确定要执行吗？`, '执行');
+    if (!ok) return;
     try {
       const r = await this.device.oem(cmd);
       ADSUtils.toast('结果: ' + r, 'info');

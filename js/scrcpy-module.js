@@ -26,6 +26,12 @@ class ScrcpyModule {
     this._bindEvents();
   }
 
+  render() {
+    const content = document.getElementById('main-content');
+    content.innerHTML = this._buildMainHTML();
+    this._bindEvents();
+  }
+
   _buildMainHTML() {
     return `
       <div class="scrcpy-container">

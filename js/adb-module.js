@@ -28,14 +28,37 @@ class AdbModule {
     this._showPanel('device-overview');
   }
 
+  render() {
+    const content = document.getElementById('main-content');
+    content.innerHTML = this._buildMainHTML();
+    this._bindEvents();
+    this._showPanel('device-overview');
+    if (this.device && this.device.connected) {
+      document.getElementById('device-not-connected')?.classList.add('hidden');
+      document.getElementById('device-info')?.classList.remove('hidden');
+    }
+  }
+
   _buildMainHTML() {
     return `
       <div class="adb-panels">
+        <!-- Category Navigation (Desktop only) -->
+        <nav class="adb-cat-nav" id="adb-cat-nav">
+          <button class="adb-cat-btn active" data-cat="device-overview"><span class="adb-cat-icon">📱</span><span>设备概览</span></button>
+          <button class="adb-cat-btn" data-cat="file-manager"><span class="adb-cat-icon">📁</span><span>文件管理</span></button>
+          <button class="adb-cat-btn" data-cat="app-manager"><span class="adb-cat-icon">📦</span><span>应用管理</span></button>
+          <button class="adb-cat-btn" data-cat="shell"><span class="adb-cat-icon">💻</span><span>Shell</span></button>
+          <button class="adb-cat-btn" data-cat="logcat"><span class="adb-cat-icon">📋</span><span>Logcat</span></button>
+          <button class="adb-cat-btn" data-cat="sideload"><span class="adb-cat-icon">📤</span><span>Sideload</span></button>
+        </nav>
+
         <div id="panel-device-overview" class="panel active">
           <div class="panel-header"><h2>设备概览</h2></div>
           <div class="panel-body">
             <div id="device-not-connected" class="empty-state">
-              <div class="empty-icon">📱</div>
+              <div class="welcome-art-wrap">
+                <img src="481d0b9400de9cfdb7d058379ef0583b1060544882.jpg" alt="" class="welcome-art" id="welcome-art" />
+              </div>
               <h3>连接 Android 设备</h3>
 
               <div class="connect-cards">
@@ -232,6 +255,16 @@ class AdbModule {
 
     $('#btn-sideload-start')?.addEventListener('click', () => this.startSideload());
 
+    const art = document.getElementById('welcome-art');
+    if (art) art.addEventListener('dblclick', (e) => this._burstEffect(e));
+
+    $$('.adb-cat-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const panelId = btn.dataset.cat;
+        if (panelId) this._showPanel(panelId);
+      });
+    });
+
     this._bindSidebarNavigation();
   }
 
@@ -248,10 +281,46 @@ class AdbModule {
     document.querySelectorAll('.adb-panels .panel').forEach(p => p.classList.remove('active'));
     const panel = document.getElementById('panel-' + panelId);
     if (panel) panel.classList.add('active');
+
+    document.querySelectorAll('.adb-cat-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.cat === panelId);
+    });
   }
 
   _shellEscape(str) {
-    return str.replace(/'/g, "'\\''");
+    return str
+      .replace(/\\/g, '\\\\')
+      .replace(/\$/g, '\\$')
+      .replace(/`/g, '\\`')
+      .replace(/"/g, '\\"')
+      .replace(/'/g, "'\\''");
+  }
+
+  _burstEffect(e) {
+    const img = e.currentTarget;
+    if (img.classList.contains('flipping')) return;
+
+    img.classList.add('flipping');
+    img.style.animation = 'art-flip 1.1s cubic-bezier(0.22, 1, 0.36, 1)';
+    img.style.animationFillMode = 'forwards';
+
+    const wrap = img.parentElement;
+    const colors = ['#f472b6', '#a78bfa', '#60a5fa', '#34d399', '#fbbf24'];
+
+    for (let i = 0; i < 4; i++) {
+      const ring = document.createElement('div');
+      ring.className = 'welcome-art-ring';
+      ring.style.animation = `art-ring ${0.7 + i * 0.12}s cubic-bezier(0.22, 1, 0.36, 1) ${i * 0.08}s forwards`;
+      ring.style.borderColor = colors[i % colors.length];
+      ring.style.boxShadow = `0 0 16px 2px ${colors[i % colors.length]}`;
+      wrap.appendChild(ring);
+      ring.addEventListener('animationend', () => ring.remove());
+    }
+
+    img.addEventListener('animationend', () => {
+      img.classList.remove('flipping');
+      img.style.animation = '';
+    }, { once: true });
   }
 
   onPanelSwitch(panelId) {
@@ -654,6 +723,9 @@ class AdbModule {
       }
       this._allApps = apps;
       this._renderApps(apps);
+      if (packages.length > 100) {
+        ADSUtils.toast(`已显示前 100 个应用（共 ${packages.length} 个）`, 'info');
+      }
     } catch (e) {
       list.innerHTML = `<div class="empty-state"><p>加载失败: ${ADSUtils.escapeHtml(e.message)}</p></div>`;
     }
@@ -754,6 +826,7 @@ class AdbModule {
     if (!cmd) return;
 
     this.shellHistory.push(cmd);
+    if (this.shellHistory.length > 200) this.shellHistory.shift();
     this.shellHistoryIndex = this.shellHistory.length;
     input.value = '';
 
@@ -894,6 +967,7 @@ class AdbModule {
         progressBar.update(pct, `${ADSUtils.formatBytes(offset)} / ${ADSUtils.formatBytes(uint8.length)}`);
       }
 
+      progressBar.update(100, '完成');
       statusEl.textContent = '刷入完成，设备将自动重启...';
       ADSUtils.toast('Sideload 完成', 'success');
     } catch (e) {
