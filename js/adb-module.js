@@ -57,7 +57,7 @@ class AdbModule {
           <div class="panel-body">
             <div id="device-not-connected" class="empty-state">
               <div class="welcome-art-wrap">
-                <img src="481d0b9400de9cfdb7d058379ef0583b1060544882.jpg" alt="" class="welcome-art" id="welcome-art" />
+                <img src="static/481d0b9400de9cfdb7d058379ef0583b1060544882.jpg" alt="" class="welcome-art" id="welcome-art" />
               </div>
               <h3>连接 Android 设备</h3>
 
