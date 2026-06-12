@@ -2216,40 +2216,160 @@ select:focus {
   line-height: 1.6;
 }
 
+/* === Log Filter Bar === */
+.log-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.log-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-overlay);
+  color: var(--text-disabled);
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: all 0.15s var(--ease);
+  opacity: 0.5;
+}
+
+.log-filter-btn:hover {
+  opacity: 0.8;
+  background: var(--bg-hover);
+}
+
+.log-filter-btn.active {
+  opacity: 1;
+}
+
+.log-filter-btn.active.filter-debug {
+  background: var(--info-bg);
+  color: var(--info);
+  border-color: var(--info);
+}
+
+.log-filter-btn.active.filter-verbose {
+  background: rgba(139, 148, 158, 0.1);
+  color: #8b949e;
+  border-color: #8b949e;
+}
+
+.log-filter-btn.active.filter-info {
+  background: var(--info-bg);
+  color: var(--info);
+  border-color: var(--info);
+}
+
+.log-filter-btn.active.filter-success {
+  background: var(--success-bg);
+  color: var(--success);
+  border-color: var(--success);
+}
+
+.log-filter-btn.active.filter-warn {
+  background: var(--warning-bg);
+  color: var(--warning);
+  border-color: var(--warning);
+}
+
+.log-filter-btn.active.filter-error {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
 /* === Log Entries === */
 .log-entry {
-  padding: 1px 14px;
+  padding: 2px 14px;
   white-space: pre-wrap;
   word-break: break-all;
   transition: background 0.1s;
-  border-left: 2px solid transparent;
+  border-left: 3px solid transparent;
+  line-height: 1.5;
 }
 
 .log-entry:hover {
   background: var(--bg-hover);
-  border-left-color: var(--accent);
 }
 
 .log-entry .log-time {
   color: var(--text-disabled);
-  margin-right: 6px;
-  font-size: 11px;
+  margin-right: 4px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+}
+
+.log-entry .log-level-icon {
+  margin-right: 4px;
+  font-size: 12px;
 }
 
 .log-entry .log-tag {
   font-weight: 700;
   margin-right: 6px;
+  font-size: 11px;
 }
 
-.log-entry.log-info .log-tag { color: var(--info); }
-.log-entry.log-success .log-tag { color: var(--success); }
-.log-entry.log-warn .log-tag { color: var(--warning); }
-.log-entry.log-error .log-tag { color: var(--danger); }
-.log-entry.log-error {
-  background: var(--danger-bg);
-  border-left-color: var(--danger);
+.log-entry .log-msg {
+  color: var(--text-secondary);
 }
-.log-entry .log-msg { color: var(--text-secondary); }
+
+.log-entry .log-data {
+  display: block;
+  margin-left: 40px;
+  margin-top: 2px;
+  padding: 4px 8px;
+  background: var(--bg-overlay);
+  border-radius: var(--radius-xs);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  max-height: 100px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+.log-entry.log-debug {
+  border-left-color: var(--info);
+}
+.log-entry.log-debug .log-tag { color: var(--info); }
+
+.log-entry.log-verbose {
+  border-left-color: #8b949e;
+}
+.log-entry.log-verbose .log-tag { color: #8b949e; }
+
+.log-entry.log-info {
+  border-left-color: var(--info);
+}
+.log-entry.log-info .log-tag { color: var(--info); }
+
+.log-entry.log-success {
+  border-left-color: var(--success);
+}
+.log-entry.log-success .log-tag { color: var(--success); }
+
+.log-entry.log-warn {
+  border-left-color: var(--warning);
+  background: var(--warning-bg);
+}
+.log-entry.log-warn .log-tag { color: var(--warning); }
+
+.log-entry.log-error {
+  border-left-color: var(--danger);
+  background: var(--danger-bg);
+}
+.log-entry.log-error .log-tag { color: var(--danger); }
 
 /* === Hidden === */
 .hidden { display: none !important; }

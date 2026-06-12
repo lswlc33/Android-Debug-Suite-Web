@@ -135,10 +135,14 @@
         <span class="log-modal-title">终端日志</span>
         <span class="log-modal-badge" id="log-modal-badge">0</span>
         <div class="log-modal-actions">
+          <button class="log-modal-btn" id="log-filter-show-all" title="显示全部">👁</button>
+          <button class="log-modal-btn" id="log-filter-hide-all" title="隐藏全部">🙈</button>
+          <button class="log-modal-btn" id="log-modal-export" title="导出日志">📋</button>
           <button class="log-modal-btn" id="log-modal-clear" title="清空日志">🗑</button>
           <button class="log-modal-btn" id="log-modal-close" title="关闭">✕</button>
         </div>
       </div>
+      <div class="log-filter-bar" id="log-filter-buttons"></div>
       <div class="log-modal-body" id="log-modal-body"></div>
     </div>
   </div>

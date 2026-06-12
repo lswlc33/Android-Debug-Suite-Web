@@ -225,7 +225,18 @@ const ADSLog = (() => {
   let modalBadge = null;
   let count = 0;
   let hasError = false;
-  const MAX_ENTRIES = 2000;
+  const MAX_ENTRIES = 5000;
+  let activeFilters = new Set(['debug', 'verbose', 'info', 'success', 'warn', 'error']);
+  let logEntries = [];
+
+  const LOG_LEVELS = {
+    debug: { priority: 0, label: '调试', icon: '🔍' },
+    verbose: { priority: 1, label: '详细', icon: '📝' },
+    info: { priority: 2, label: '信息', icon: 'ℹ️' },
+    success: { priority: 3, label: '成功', icon: '✅' },
+    warn: { priority: 4, label: '警告', icon: '⚠️' },
+    error: { priority: 5, label: '错误', icon: '❌' }
+  };
 
   function init() {
     modal = document.getElementById('log-modal');
@@ -242,7 +253,8 @@ const ADSLog = (() => {
     if (closeBtn) closeBtn.addEventListener('click', close);
     if (overlay) overlay.addEventListener('click', close);
 
-    // Triple-click on title to open log
+    initFilterButtons();
+
     if (title) {
       let clickCount = 0;
       let clickTimer = null;
@@ -260,6 +272,60 @@ const ADSLog = (() => {
     }
 
     interceptConsole();
+  }
+
+  function initFilterButtons() {
+    const filterContainer = document.getElementById('log-filter-buttons');
+    if (!filterContainer) return;
+
+    Object.entries(LOG_LEVELS).forEach(([level, config]) => {
+      const btn = document.createElement('button');
+      btn.className = `log-filter-btn active filter-${level}`;
+      btn.dataset.level = level;
+      btn.innerHTML = `${config.icon} ${config.label}`;
+      btn.addEventListener('click', () => toggleFilter(level, btn));
+      filterContainer.appendChild(btn);
+    });
+
+    const showAllBtn = document.getElementById('log-filter-show-all');
+    const hideAllBtn = document.getElementById('log-filter-hide-all');
+    if (showAllBtn) showAllBtn.addEventListener('click', () => setAllFilters(true));
+    if (hideAllBtn) hideAllBtn.addEventListener('click', () => setAllFilters(false));
+  }
+
+  function toggleFilter(level, btn) {
+    if (activeFilters.has(level)) {
+      activeFilters.delete(level);
+      btn.classList.remove('active');
+    } else {
+      activeFilters.add(level);
+      btn.classList.add('active');
+    }
+    applyFilters();
+  }
+
+  function setAllFilters(show) {
+    const buttons = document.querySelectorAll('.log-filter-btn');
+    buttons.forEach(btn => {
+      const level = btn.dataset.level;
+      if (show) {
+        activeFilters.add(level);
+        btn.classList.add('active');
+      } else {
+        activeFilters.delete(level);
+        btn.classList.remove('active');
+      }
+    });
+    applyFilters();
+  }
+
+  function applyFilters() {
+    if (!modalBody) return;
+    const entries = modalBody.querySelectorAll('.log-entry');
+    entries.forEach(entry => {
+      const level = entry.dataset.level;
+      entry.style.display = activeFilters.has(level) ? '' : 'none';
+    });
   }
 
   function open() {
@@ -283,6 +349,7 @@ const ADSLog = (() => {
 
   function clear() {
     if (modalBody) modalBody.innerHTML = '';
+    logEntries = [];
     count = 0;
     hasError = false;
     _updateBadge();
@@ -298,57 +365,134 @@ const ADSLog = (() => {
   function _timestamp() {
     const d = new Date();
     const pad = (n) => String(n).padStart(2, '0');
-    return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3, '0')}`;
   }
 
-  function _append(level, tag, msg) {
+  function _append(level, tag, msg, data) {
     if (!modalBody) return;
     const el = document.createElement('div');
     el.className = `log-entry log-${level}`;
-    el.innerHTML = `<span class="log-time">${_timestamp()}</span><span class="log-tag">[${tag}]</span><span class="log-msg">${ADSUtils.escapeHtml(String(msg))}</span>`;
+    el.dataset.level = level;
+
+    let dataHtml = '';
+    if (data !== undefined) {
+      const dataStr = typeof data === 'object' ? JSON.stringify(data, null, 2) : String(data);
+      dataHtml = `<span class="log-data">${ADSUtils.escapeHtml(dataStr)}</span>`;
+    }
+
+    el.innerHTML = `<span class="log-time">${_timestamp()}</span><span class="log-level-icon">${LOG_LEVELS[level]?.icon || '📝'}</span><span class="log-tag">[${tag}]</span><span class="log-msg">${ADSUtils.escapeHtml(String(msg))}</span>${dataHtml}`;
     modalBody.appendChild(el);
+
+    logEntries.push({ level, tag, msg, data, timestamp: Date.now() });
 
     while (modalBody.children.length > MAX_ENTRIES) {
       modalBody.removeChild(modalBody.firstChild);
+      logEntries.shift();
     }
 
     count++;
     if (level === 'error') hasError = true;
     _updateBadge();
 
+    if (!activeFilters.has(level)) {
+      el.style.display = 'none';
+    }
+
     if (modalBody.scrollTop + modalBody.clientHeight >= modalBody.scrollHeight - 40) {
       modalBody.scrollTop = modalBody.scrollHeight;
     }
   }
 
-  function info(tag, msg) { _append('info', tag, msg); }
-  function success(tag, msg) { _append('success', tag, msg); }
-  function warn(tag, msg) { _append('warn', tag, msg); }
-  function error(tag, msg) { _append('error', tag, msg); }
+  function debug(tag, msg, data) { _append('debug', tag, msg, data); }
+  function verbose(tag, msg, data) { _append('verbose', tag, msg, data); }
+  function info(tag, msg, data) { _append('info', tag, msg, data); }
+  function success(tag, msg, data) { _append('success', tag, msg, data); }
+  function warn(tag, msg, data) { _append('warn', tag, msg, data); }
+  function error(tag, msg, data) { _append('error', tag, msg, data); }
+
+  function logOperationStart(tag, operation, params) {
+    verbose(tag, `▶ 开始: ${operation}`, params);
+  }
+
+  function logOperationEnd(tag, operation, result, duration) {
+    const durationStr = duration ? ` (${duration}ms)` : '';
+    verbose(tag, `◀ 完成: ${operation}${durationStr}`, result);
+  }
+
+  function logOperationError(tag, operation, error) {
+    const errMsg = error?.message || String(error);
+    _append('error', tag, `✖ 失败: ${operation}`, { error: errMsg, stack: error?.stack });
+  }
+
+  function logInput(tag, action, input) {
+    debug(tag, `→ 输入: ${action}`, input);
+  }
+
+  function logOutput(tag, action, output) {
+    debug(tag, `← 输出: ${action}`, output);
+  }
+
+  function logProtocol(tag, direction, command, data) {
+    const dir = direction === 'send' ? '→' : '←';
+    verbose(tag, `${dir} 协议: ${command}`, data);
+  }
+
+  function exportLogs() {
+    const lines = logEntries.map(e => {
+      const ts = new Date(e.timestamp).toISOString();
+      const dataStr = e.data ? ` | ${typeof e.data === 'object' ? JSON.stringify(e.data) : e.data}` : '';
+      return `[${ts}] [${e.level.toUpperCase()}] [${e.tag}] ${e.msg}${dataStr}`;
+    });
+    return lines.join('\n');
+  }
 
   function interceptConsole() {
     const origLog = console.log.bind(console);
     const origWarn = console.warn.bind(console);
     const origError = console.error.bind(console);
+    const origDebug = console.debug.bind(console);
+    const origInfo = console.info.bind(console);
 
     console.log = (...args) => {
       origLog(...args);
       const text = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
       if (text.startsWith('[ADS]') || text.startsWith('[Android Debug Suite]')) {
         info('APP', text.replace(/^\[(ADS|Android Debug Suite)\]\s*/, ''));
+      } else {
+        debug('CONSOLE', text);
       }
     };
+
+    console.debug = (...args) => {
+      origDebug(...args);
+      const text = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+      debug('CONSOLE', text);
+    };
+
+    console.info = (...args) => {
+      origInfo(...args);
+      const text = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+      info('CONSOLE', text);
+    };
+
     console.warn = (...args) => {
       origWarn(...args);
       const text = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
-      warn('WARN', text);
+      warn('CONSOLE', text);
     };
+
     console.error = (...args) => {
       origError(...args);
       const text = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
-      error('ERR', text);
+      error('CONSOLE', text);
     };
   }
 
-  return { init, open, close, toggle, clear, info, success, warn, error };
+  return {
+    init, open, close, toggle, clear,
+    debug, verbose, info, success, warn, error,
+    logOperationStart, logOperationEnd, logOperationError,
+    logInput, logOutput, logProtocol,
+    exportLogs
+  };
 })();

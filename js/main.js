@@ -32,9 +32,21 @@ const ADSMain = (() => {
     initSidebar();
     initTopBar();
     ADSLog.init();
+    initLogExport();
     loadModule('adb');
     checkBrowserSupport();
-    console.log('[ADS] Android Debug Suite 已启动');
+    ADSLog.info('SYS', 'Android Debug Suite 已启动', { version: '1.0', platform: navigator.platform });
+  }
+
+  function initLogExport() {
+    const exportBtn = document.getElementById('log-modal-export');
+    if (exportBtn) {
+      exportBtn.addEventListener('click', () => {
+        const logs = ADSLog.exportLogs();
+        ADSUtils.downloadText(logs, `ads-logs-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`);
+        ADSUtils.toast('日志已导出', 'success');
+      });
+    }
   }
 
   function initTheme() {
@@ -144,6 +156,7 @@ const ADSMain = (() => {
     switching = true;
 
     const oldMode = currentMode;
+    ADSLog.logOperationStart('SYS', '切换模式', { from: oldMode, to: mode });
 
     if (moduleInstances[currentMode] && typeof moduleInstances[currentMode].onDeactivate === 'function') {
       await moduleInstances[currentMode].onDeactivate();
@@ -155,7 +168,7 @@ const ADSMain = (() => {
 
     currentMode = mode;
     updateBottomBar();
-    console.log(`[ADS] 切换模式: ${oldMode} → ${mode}`);
+    ADSLog.verbose('SYS', `模式已切换: ${oldMode} → ${mode}`);
 
     const contentArea = document.getElementById('main-content');
     if (contentArea) {
@@ -178,6 +191,9 @@ const ADSMain = (() => {
 
       updateSidebarItems(mode);
       updateConnectionState('disconnected');
+      ADSLog.logOperationEnd('SYS', '切换模式', { mode });
+    } catch (e) {
+      ADSLog.logOperationError('SYS', '切换模式', e);
     } finally {
       switching = false;
     }
@@ -208,10 +224,14 @@ const ADSMain = (() => {
     const moduleMap = { adb: 'js/adb-module.js', fastboot: 'js/fastboot-module.js', scrcpy: 'js/scrcpy-module.js' };
 
     try {
+      ADSLog.verbose('SYS', `加载模块: ${mode}`);
+      
       if (libMap[mode]) {
+        ADSLog.debug('SYS', `加载库文件: ${libMap[mode]}`);
         await loadScript(libMap[mode]);
       }
 
+      ADSLog.debug('SYS', `加载模块文件: ${moduleMap[mode]}`);
       await loadScript(moduleMap[mode]);
 
       const initFns = { adb: 'initAdbModule', fastboot: 'initFastbootModule', scrcpy: 'initScrcpyModule' };
@@ -222,11 +242,11 @@ const ADSMain = (() => {
         console.error(`[ADS] Init function ${initFns[mode]} not found`);
       }
 
-      console.log(`[ADS] 模块 ${mode} 已加载`);
       loadedModules[mode] = true;
       updateSidebarItems(mode);
+      ADSLog.success('SYS', `模块 ${mode} 已加载`);
     } catch (e) {
-      console.error(`[ADS] Failed to load ${mode} module:`, e);
+      ADSLog.logOperationError('SYS', `加载模块 ${mode}`, e);
       showFallbackContent(mode, e.message);
     }
   }
@@ -257,11 +277,11 @@ const ADSMain = (() => {
       const script = document.createElement('script');
       script.src = src;
       script.onload = () => {
-        console.log(`[ADS] 已加载: ${src}`);
+        ADSLog.debug('SYS', `脚本已加载: ${src}`);
         resolve();
       };
       script.onerror = () => {
-        console.error(`[ADS] 加载失败: ${src}`);
+        ADSLog.error('SYS', `脚本加载失败: ${src}`);
         reject(new Error(`Failed to load ${src}`));
       };
       document.head.appendChild(script);
@@ -301,7 +321,10 @@ const ADSMain = (() => {
       `;
       document.body.appendChild(overlay);
     } else {
-      ADSLog.info('SYS', `浏览器兼容: ${serial.method}`);
+      ADSLog.success('SYS', `浏览器兼容: ${serial.method}`, {
+        userAgent: navigator.userAgent,
+        platform: navigator.platform
+      });
     }
   }
 

@@ -10,8 +10,8 @@ function initAdbModule() {
 
 class AdbModule {
   constructor() {
+    this.client = null;
     this.device = null;
-    this.server = new AdbServer();
     this.currentPath = '/sdcard';
     this.pathHistory = [];
     this.shellHistory = [];
@@ -341,42 +341,42 @@ class AdbModule {
   }
 
   async connect() {
+    const startTime = Date.now();
     try {
       ADSMain.updateConnectionState('connecting');
       ADSUtils.showLoading('正在请求设备...');
-      ADSLog.info('ADB', '=== 开始 USB 连接流程 ===');
+      ADSLog.logOperationStart('ADB', 'USB 连接流程');
 
       if (!('usb' in navigator)) {
         throw new Error('当前浏览器不支持 WebUSB API，请使用 Chrome 89+ 或 Edge 89+');
       }
 
-      ADSLog.info('ADB', 'WebUSB API 可用，请求设备选择...');
-      let usbDevice;
-      try {
-        usbDevice = await this.server.requestUsbDevice();
-        ADSLog.info('ADB', '设备选择对话框已打开');
-      } catch (reqErr) {
-        if (reqErr.name === 'NotFoundError') {
-          ADSLog.warn('ADB', '用户取消了设备选择');
-          throw reqErr;
-        }
-        ADSLog.error('ADB', '设备选择失败: ' + reqErr.message);
-        throw reqErr;
+      ADSLog.verbose('ADB', 'WebUSB API 可用');
+
+      await this.device?.disconnect().catch(() => {});
+      this.client = new AdbClient();
+
+      const selected = await this.client.requestDevice();
+      if (!selected) {
+        ADSLog.warn('ADB', '用户取消了设备选择');
+        throw new DOMException('No device selected', 'NotFoundError');
       }
+      const usbDevice = this.client.device;
+      ADSLog.logInput('ADB', '设备选择', { productName: usbDevice.productName });
       ADSLog.info('ADB', `已选择设备: ${usbDevice.productName || '未知'}`);
-      ADSLog.info('ADB', `  VID: 0x${usbDevice.vendorId.toString(16).toUpperCase()}, PID: 0x${usbDevice.productId.toString(16).toUpperCase()}`);
-      ADSLog.info('ADB', `  序列号: ${usbDevice.serialNumber || '无'}`);
-      ADSLog.info('ADB', `  配置数量: ${usbDevice.configurations?.length || 0}`);
-      
+      ADSLog.debug('ADB', '设备详情', {
+        vid: '0x' + usbDevice.vendorId.toString(16).toUpperCase(),
+        pid: '0x' + usbDevice.productId.toString(16).toUpperCase(),
+        serial: usbDevice.serialNumber || '无'
+      });
+
       ADSUtils.updateLoadingText('正在通过 USB 连接...');
-      const transport = new AdbUsbTransport(usbDevice);
       try {
-        ADSLog.info('ADB', '正在声明 USB 接口...');
-        await transport.connect();
-        ADSLog.success('ADB', `USB 传输层连接成功 (接口 #${transport.ifaceNumber})`);
-        ADSLog.info('ADB', `  IN 端点: ${transport.epIn?.endpointNumber}, OUT 端点: ${transport.epOut?.endpointNumber}`);
+        ADSLog.verbose('ADB', '正在打开 USB 设备...');
+        await this.client.open();
+        ADSLog.success('ADB', 'USB 传输层连接成功');
       } catch (claimErr) {
-        if (claimErr.name === 'NetworkError' || claimErr.message.includes('claim')) {
+        if (claimErr.name === 'NetworkError' || claimErr.message.includes('claim') || claimErr.message.includes('占用')) {
           ADSLog.error('ADB', 'USB 接口被占用: ' + claimErr.message);
           throw new Error('USB 接口被占用。请先关闭其他 ADB 工具（如 Android Studio、scrcpy 等），然后重试。');
         }
@@ -384,20 +384,17 @@ class AdbModule {
           ADSLog.error('ADB', 'USB 设备访问被拒绝: ' + claimErr.message);
           throw new Error('USB 设备访问被拒绝。请关闭命令行 adb 工具、Android Studio 或其他可能占用设备的程序');
         }
-        ADSLog.error('ADB', 'USB 连接失败: ' + claimErr.message);
+        ADSLog.logOperationError('ADB', 'USB 连接', claimErr);
         throw claimErr;
       }
 
-      await this.device?.disconnect().catch(() => {});
-      this.device = new AdbDevice(transport);
+      this.device = new AdbDevice(this.client);
 
       ADSUtils.updateLoadingText('正在认证...');
-      ADSLog.info('ADB', '开始 ADB 协议握手...');
-      ADSLog.info('ADB', '发送 CNXN 命令...');
-      
-      await this.device.connect((pubKeyB64) => {
-        ADSLog.info('ADB', '设备需要授权，请在手机上点击"允许 USB 调试"');
-        ADSLog.info('ADB', '如果手机没有弹出提示，请尝试：1. 撤销USB调试授权后重试  2. 点击"重置 ADB 密钥"后重连');
+      ADSLog.verbose('ADB', '开始 ADB 协议握手...');
+
+      await this.device.connect((fingerprint) => {
+        ADSLog.warn('ADB', '设备需要授权', { fingerprint, action: '请在手机上点击"允许 USB 调试"' });
         ADSUtils.hideLoading();
         ADSUtils.confirmDialog(
           'ADB 授权',
@@ -408,11 +405,13 @@ class AdbModule {
       ADSLog.success('ADB', 'ADB 认证成功');
 
       ADSUtils.updateLoadingText('正在获取设备信息...');
-      ADSLog.info('ADB', '正在读取设备属性...');
+      ADSLog.verbose('ADB', '正在读取设备属性...');
       const props = await this.device.getDeviceProps();
       this._displayDeviceInfo(props);
 
       const deviceName = props['ro.product.model'] || 'Unknown';
+      const duration = Date.now() - startTime;
+      ADSLog.logOperationEnd('ADB', 'USB 连接流程', { device: deviceName, android: props['ro.build.version.release'] }, duration);
       ADSLog.success('ADB', `设备已连接: ${deviceName} (Android ${props['ro.build.version.release'] || '?'}, SDK ${props['ro.build.version.sdk'] || '?'})`);
       ADSMain.updateConnectionState('connected', { device: deviceName });
       ADSMain.setAdbDevice(this.device);
@@ -427,13 +426,8 @@ class AdbModule {
       if (e.name === 'NotFoundError') {
         ADSLog.warn('ADB', '未选择设备');
         ADSUtils.toast('未选择设备', 'warning');
-      } else if (e.message && e.message.includes('认证超时')) {
-        ADSLog.error('ADB', '连接失败: ' + e.message);
-        ADSLog.info('ADB', '提示: 请确保设备屏幕已解锁，然后在设备上查找USB调试授权弹窗');
-        ADSLog.info('ADB', '如果仍无弹窗，请进入 设置 → 开发者选项 → 撤销USB调试授权，然后重置密钥后重试');
-        ADSUtils.toast('认证超时：设备未弹出授权提示？请尝试重置 ADB 密钥', 'error');
       } else {
-        ADSLog.error('ADB', '连接失败: ' + e.message);
+        ADSLog.logOperationError('ADB', 'USB 连接流程', e);
         ADSUtils.toast('连接失败: ' + e.message, 'error');
       }
     }
@@ -441,10 +435,11 @@ class AdbModule {
 
   async disconnect() {
     if (this.device) {
-      ADSLog.info('ADB', '正在断开连接...');
+      ADSLog.logOperationStart('ADB', '断开连接');
       await this.device.disconnect().catch(() => {});
       this.device = null;
       ADSMain.setAdbDevice(null);
+      ADSLog.logOperationEnd('ADB', '断开连接');
       ADSLog.info('ADB', '设备已断开');
     }
     ADSMain.updateConnectionState('disconnected');
@@ -459,7 +454,9 @@ class AdbModule {
       '重置'
     );
     if (!ok) return;
+    ADSLog.logOperationStart('ADB', '重置 ADB 密钥');
     AdbDevice.clearStoredKey();
+    ADSLog.logOperationEnd('ADB', '重置 ADB 密钥');
     ADSLog.info('ADB', 'ADB 密钥已重置，请重新连接设备');
     ADSUtils.toast('ADB 密钥已重置，请重新连接设备', 'success');
   }
@@ -486,9 +483,13 @@ class AdbModule {
 
   async takeScreenshot() {
     if (!this.device) return ADSUtils.toast('请先连接设备', 'warning');
+    const startTime = Date.now();
     try {
+      ADSLog.logOperationStart('ADB', '截图');
       ADSUtils.showLoading('正在截图...');
       const data = await this.device.screencap();
+      const duration = Date.now() - startTime;
+      ADSLog.debug('ADB', '截图数据接收', { size: ADSUtils.formatBytes(data.byteLength), duration: duration + 'ms' });
       ADSUtils.hideLoading();
       const blob = new Blob([data], { type: 'image/png' });
       const url = URL.createObjectURL(blob);
@@ -499,8 +500,11 @@ class AdbModule {
         preview.classList.remove('hidden');
         preview._blob = blob;
       }
+      ADSLog.logOperationEnd('ADB', '截图', { size: ADSUtils.formatBytes(blob.size) }, duration);
+      ADSUtils.toast('截图完成', 'success');
     } catch (e) {
       ADSUtils.hideLoading();
+      ADSLog.logOperationError('ADB', '截图', e);
       ADSUtils.toast('截图失败: ' + e.message, 'error');
     }
   }
@@ -518,10 +522,13 @@ class AdbModule {
     const ok = await ADSUtils.confirmDialog('重启设备', `确定要将设备重启到 ${label} 模式吗？`, '重启');
     if (!ok) return;
     try {
+      ADSLog.logOperationStart('ADB', '重启设备', { mode: label });
       await this.device.reboot(mode);
+      ADSLog.logOperationEnd('ADB', '重启设备', { mode: label });
       ADSUtils.toast('设备正在重启...', 'info');
       ADSMain.updateConnectionState('disconnected');
     } catch (e) {
+      ADSLog.logOperationError('ADB', '重启设备', e);
       ADSUtils.toast('重启失败: ' + e.message, 'error');
     }
   }
@@ -531,12 +538,17 @@ class AdbModule {
     const list = document.getElementById('file-list');
     if (!list) return;
     list.innerHTML = '<div class="loading-inline">加载中...</div>';
+    const startTime = Date.now();
     try {
+      ADSLog.verbose('ADB', '刷新文件列表', { path: this.currentPath });
       const entries = await this.device.listDir(this.currentPath);
+      const duration = Date.now() - startTime;
+      ADSLog.debug('ADB', '文件列表加载完成', { path: this.currentPath, count: entries.length, duration: duration + 'ms' });
       this._renderFileList(entries);
       this._updateBreadcrumb();
       document.getElementById('file-path-input').value = this.currentPath;
     } catch (e) {
+      ADSLog.logOperationError('ADB', '刷新文件列表', e);
       list.innerHTML = `<div class="empty-state"><p>无法读取目录: ${ADSUtils.escapeHtml(e.message)}</p></div>`;
     }
   }
@@ -637,16 +649,21 @@ class AdbModule {
   async downloadFile(name) {
     if (!this.device) return;
     const remotePath = this.currentPath + '/' + name;
+    const startTime = Date.now();
     try {
+      ADSLog.logOperationStart('ADB', '下载文件', { name, path: remotePath });
       ADSUtils.showLoading(`下载 ${name}...`);
       const data = await this.device.pull(remotePath, (size) => {
         ADSUtils.updateLoadingText(`下载 ${name}: ${ADSUtils.formatBytes(size)}`);
       });
+      const duration = Date.now() - startTime;
       ADSUtils.hideLoading();
       ADSUtils.downloadArrayBuffer(data, name);
+      ADSLog.logOperationEnd('ADB', '下载文件', { name, size: ADSUtils.formatBytes(data.byteLength) }, duration);
       ADSUtils.toast('下载完成', 'success');
     } catch (e) {
       ADSUtils.hideLoading();
+      ADSLog.logOperationError('ADB', '下载文件', e);
       ADSUtils.toast('下载失败: ' + e.message, 'error');
     }
   }
@@ -656,17 +673,22 @@ class AdbModule {
     const file = await ADSUtils.pickFile();
     if (!file) return;
     const remotePath = this.currentPath + '/' + file.name;
+    const startTime = Date.now();
     try {
+      ADSLog.logOperationStart('ADB', '上传文件', { name: file.name, size: ADSUtils.formatBytes(file.size), path: remotePath });
       ADSUtils.showLoading(`上传 ${file.name}...`);
       const data = await ADSUtils.readFileAsArrayBuffer(file);
       await this.device.push(new Uint8Array(data), remotePath, 0o100644, (sent, total) => {
         ADSUtils.updateLoadingText(`上传 ${file.name}: ${ADSUtils.formatBytes(sent)} / ${ADSUtils.formatBytes(total)}`);
       });
+      const duration = Date.now() - startTime;
       ADSUtils.hideLoading();
+      ADSLog.logOperationEnd('ADB', '上传文件', { name: file.name, size: ADSUtils.formatBytes(file.size) }, duration);
       ADSUtils.toast('上传完成', 'success');
       this.refreshFiles();
     } catch (e) {
       ADSUtils.hideLoading();
+      ADSLog.logOperationError('ADB', '上传文件', e);
       ADSUtils.toast('上传失败: ' + e.message, 'error');
     }
   }
@@ -675,12 +697,17 @@ class AdbModule {
     if (!this.device) return;
     const ok = await ADSUtils.confirmDialog('删除确认', `确定要删除 "${name}" 吗？`, '删除');
     if (!ok) return;
+    const startTime = Date.now();
     try {
       const safePath = this._shellEscape(this.currentPath + '/' + name);
+      ADSLog.logOperationStart('ADB', '删除文件', { name, path: this.currentPath + '/' + name });
       await this.device.shellCommand(`rm -rf '${safePath}'`);
+      const duration = Date.now() - startTime;
+      ADSLog.logOperationEnd('ADB', '删除文件', { name }, duration);
       ADSUtils.toast('已删除', 'success');
       this.refreshFiles();
     } catch (e) {
+      ADSLog.logOperationError('ADB', '删除文件', e);
       ADSUtils.toast('删除失败: ' + e.message, 'error');
     }
   }
@@ -693,12 +720,17 @@ class AdbModule {
       ADSUtils.toast('文件夹名称包含无效字符', 'error');
       return;
     }
+    const startTime = Date.now();
     try {
       const safePath = this._shellEscape(this.currentPath + '/' + name);
+      ADSLog.logOperationStart('ADB', '创建目录', { name, path: this.currentPath + '/' + name });
       await this.device.shellCommand(`mkdir -p '${safePath}'`);
+      const duration = Date.now() - startTime;
+      ADSLog.logOperationEnd('ADB', '创建目录', { name }, duration);
       ADSUtils.toast('已创建', 'success');
       this.refreshFiles();
     } catch (e) {
+      ADSLog.logOperationError('ADB', '创建目录', e);
       ADSUtils.toast('创建失败: ' + e.message, 'error');
     }
   }
@@ -708,9 +740,12 @@ class AdbModule {
     const list = document.getElementById('app-list');
     if (!list) return;
     list.innerHTML = '<div class="loading-inline">加载应用列表...</div>';
+    const startTime = Date.now();
     try {
+      ADSLog.logOperationStart('ADB', '加载应用列表');
       const output = await this.device.shellCommand('pm list packages -3');
       const packages = output.split('\n').filter(l => l.startsWith('package:')).map(l => l.replace('package:', '').trim());
+      ADSLog.debug('ADB', '获取到应用包列表', { count: packages.length });
       const apps = [];
       for (const pkg of packages.slice(0, 100)) {
         try {
@@ -721,12 +756,15 @@ class AdbModule {
           apps.push({ package: pkg, version: '-' });
         }
       }
+      const duration = Date.now() - startTime;
       this._allApps = apps;
       this._renderApps(apps);
+      ADSLog.logOperationEnd('ADB', '加载应用列表', { total: packages.length, loaded: apps.length }, duration);
       if (packages.length > 100) {
         ADSUtils.toast(`已显示前 100 个应用（共 ${packages.length} 个）`, 'info');
       }
     } catch (e) {
+      ADSLog.logOperationError('ADB', '加载应用列表', e);
       list.innerHTML = `<div class="empty-state"><p>加载失败: ${ADSUtils.escapeHtml(e.message)}</p></div>`;
     }
   }
@@ -775,9 +813,12 @@ class AdbModule {
       return;
     }
     try {
+      ADSLog.logOperationStart('ADB', '打开应用', { package: pkg });
       await this.device.shellCommand(`monkey -p ${pkg} 1`);
+      ADSLog.logOperationEnd('ADB', '打开应用', { package: pkg });
       ADSUtils.toast('已打开 ' + pkg, 'success');
     } catch (e) {
+      ADSLog.logOperationError('ADB', '打开应用', e);
       ADSUtils.toast('打开失败: ' + e.message, 'error');
     }
   }
@@ -791,10 +832,14 @@ class AdbModule {
     const ok = await ADSUtils.confirmDialog('卸载应用', `确定要卸载 "${pkg}" 吗？`, '卸载');
     if (!ok) return;
     try {
+      ADSLog.logOperationStart('ADB', '卸载应用', { package: pkg });
       const result = await this.device.uninstall(pkg);
-      ADSUtils.toast(result.includes('Success') ? '已卸载' : '卸载结果: ' + result, result.includes('Success') ? 'success' : 'warning');
+      const success = result.includes('Success');
+      ADSLog.logOperationEnd('ADB', '卸载应用', { package: pkg, result, success });
+      ADSUtils.toast(success ? '已卸载' : '卸载结果: ' + result, success ? 'success' : 'warning');
       this.loadApps();
     } catch (e) {
+      ADSLog.logOperationError('ADB', '卸载应用', e);
       ADSUtils.toast('卸载失败: ' + e.message, 'error');
     }
   }
@@ -803,16 +848,22 @@ class AdbModule {
     if (!this.device) return ADSUtils.toast('请先连接设备', 'warning');
     const file = await ADSUtils.pickFile('.apk');
     if (!file) return;
+    const startTime = Date.now();
     try {
+      ADSLog.logOperationStart('ADB', '安装应用', { name: file.name, size: ADSUtils.formatBytes(file.size) });
       ADSUtils.showLoading(`安装 ${file.name}...`);
       const data = await ADSUtils.readFileAsArrayBuffer(file);
       const result = await this.device.install(new Uint8Array(data), file.name, (sent, total) => {
         ADSUtils.updateLoadingText(`安装 ${file.name}: ${ADSUtils.formatBytes(sent)} / ${ADSUtils.formatBytes(total)}`);
       });
+      const duration = Date.now() - startTime;
+      const success = result.includes('Success');
       ADSUtils.hideLoading();
-      ADSUtils.toast(result.includes('Success') ? '安装成功' : '安装结果: ' + result, result.includes('Success') ? 'success' : 'warning');
+      ADSLog.logOperationEnd('ADB', '安装应用', { name: file.name, result, success }, duration);
+      ADSUtils.toast(success ? '安装成功' : '安装结果: ' + result, success ? 'success' : 'warning');
     } catch (e) {
       ADSUtils.hideLoading();
+      ADSLog.logOperationError('ADB', '安装应用', e);
       ADSUtils.toast('安装失败: ' + e.message, 'error');
     }
   }
@@ -830,18 +881,26 @@ class AdbModule {
     this.shellHistoryIndex = this.shellHistory.length;
     input.value = '';
 
+    ADSLog.logInput('SHELL', '执行命令', { command: cmd });
+
     const cmdLine = document.createElement('div');
     cmdLine.className = 'shell-line shell-cmd';
     cmdLine.textContent = '$ ' + cmd;
     output.appendChild(cmdLine);
 
+    const startTime = Date.now();
     try {
       const result = await this.device.shellCommand(cmd);
+      const duration = Date.now() - startTime;
+      ADSLog.logOutput('SHELL', '命令输出', { command: cmd, exitCode: 0, duration: duration + 'ms' });
+      ADSLog.debug('SHELL', '命令结果', { output: result.substring(0, 500) + (result.length > 500 ? '...' : '') });
       const resultLine = document.createElement('div');
       resultLine.className = 'shell-line shell-result';
       resultLine.textContent = result;
       output.appendChild(resultLine);
     } catch (e) {
+      const duration = Date.now() - startTime;
+      ADSLog.logOperationError('SHELL', '执行命令', e);
       const errLine = document.createElement('div');
       errLine.className = 'shell-line shell-error';
       errLine.textContent = 'Error: ' + e.message;
@@ -951,7 +1010,10 @@ class AdbModule {
       statusEl.textContent = '正在推送文件...';
 
       const data = await ADSUtils.readFileAsArrayBuffer(file);
-      const stream = await this.device.open('sideload:' + data.byteLength);
+      const localId = ++this.device._localId;
+      await this.client.send({ command: 0x4E45504F, arg0: localId, arg1: 0, data: 'sideload:' + data.byteLength });
+      const openResp = await this.client.receiveExpect({ command: 0x59414B4F });
+      const remoteId = openResp.arg0;
 
       const chunkSize = 64 * 1024;
       const uint8 = new Uint8Array(data);
@@ -960,8 +1022,10 @@ class AdbModule {
       while (offset < uint8.length) {
         const end = Math.min(offset + chunkSize, uint8.length);
         const chunk = uint8.slice(offset, end);
-        const msg = new AdbMessage(0x45545257, stream.localId, stream.remoteId, chunk.buffer);
-        await this.device.transport.sendMessage(msg);
+        await this.client.send({ command: 0x45545257, arg0: localId, arg1: remoteId, data: chunk.buffer });
+        const ack = await this.client.receive();
+        if (ack.command === 0x45534C43) throw new Error('设备关闭了 sideload 连接');
+        await this.client.send({ command: 0x59414B4F, arg0: localId, arg1: remoteId });
         offset = end;
         const pct = (offset / uint8.length) * 100;
         progressBar.update(pct, `${ADSUtils.formatBytes(offset)} / ${ADSUtils.formatBytes(uint8.length)}`);
