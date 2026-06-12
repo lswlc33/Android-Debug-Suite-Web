@@ -217,17 +217,17 @@
   // RSA sign using BigInt modular exponentiation (PKCS#1 v1.5 + SHA-1 DigestInfo)
   async function rsaSign(privateKeyB64, tokenBuffer) {
     const digest = new Uint8Array(await crypto.subtle.digest('SHA-1', tokenBuffer));
-    // PKCS#1 v1.5 DigestInfo prefix for SHA-1 (236 bytes total before hash)
+    // PKCS#1 v1.5 padding for SHA-1 (218 bytes FF padding)
     const padded = new Uint8Array(256);
     padded[0] = 0; padded[1] = 1;
-    for (let i = 2; i < 236; i++) padded[i] = 0xFF;
-    padded[236] = 0;
+    for (let i = 2; i < 220; i++) padded[i] = 0xFF;
+    padded[220] = 0;
     // DER-encoded DigestInfo + SHA-1 hash
     const digestInfo = new Uint8Array([
       0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x2b, 0x0e, 0x03, 0x02, 0x1a, 0x05, 0x00, 0x04, 0x14,
       ...digest
     ]);
-    padded.set(digestInfo, 241);
+    padded.set(digestInfo, 221);
 
     const { d, n } = extractRsaComponents(privateKeyB64);
     const message = dataViewToBigInt(new DataView(padded.buffer), 0, 256);
