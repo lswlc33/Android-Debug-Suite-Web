@@ -300,6 +300,9 @@
       this.device = null;
       this.endpoints = null;
       this.banner = null;
+      this._msgQueues = new Map();
+      this._nextLocalId = 0;
+      this._pendingOpen = null;
       if (!navigator.usb) throw new Error('当前浏览器不支持 WebUSB API');
     }
 
@@ -400,10 +403,21 @@
 
     async pair({ privateKey, publicKey, userGestureCallback }) {
       await this.send({ command: CMD_CNXN, arg0: PROTOCOL_VERSION, arg1: MAX_PAYLOAD, data: 'host::stopapp' });
-      const { data: token } = await this.receiveExpect({ command: CMD_AUTH, arg0: AUTH_TOKEN });
-      await this.send({ command: CMD_AUTH, arg0: AUTH_SIGNATURE, data: await rsaSign(privateKey, token.buffer) });
 
       let msg = await this.receive();
+      if (msg.command === CMD_CNXN) {
+        this.banner = this.parseBanner(msg.data);
+        return;
+      }
+
+      if (msg.command !== CMD_AUTH) {
+        throw new Error('ADB 认证失败：未知响应');
+      }
+
+      const token = msg.data;
+      await this.send({ command: CMD_AUTH, arg0: AUTH_SIGNATURE, data: await rsaSign(privateKey, token.buffer) });
+
+      msg = await this.receive();
       if (msg.command !== CMD_CNXN) {
         if (msg.command === CMD_AUTH) {
           await this.send({ command: CMD_AUTH, arg0: AUTH_RSAPUBLICKEY, data: publicKey });
@@ -426,22 +440,33 @@
     }
 
     async exec(command) {
-      await this.send({ command: CMD_OPEN, arg0: 1, arg1: 0, data: `shell:${command}` });
-      await this.receiveExpect({ command: CMD_OKAY });
+      const localId = this.allocLocalId();
+      this._pendingOpen = { localId };
+      await this.send({ command: CMD_OPEN, arg0: localId, arg1: 0, data: `shell:${command}` });
+      let msg = await this.receiveFor(localId);
+      this._pendingOpen = null;
+      if (msg.command === CMD_WRTE) {
+        await this.send({ command: CMD_OKAY, arg0: msg.arg1, arg1: msg.arg0 });
+      } else if (msg.command !== CMD_OKAY) {
+        throw new Error('ADB shell 打开失败');
+      }
       const parts = [];
       const decoder = new TextDecoder();
-      let msg;
-      while ((msg = await this.receive())) {
+      if (msg.command === CMD_WRTE && msg.data) parts.push(decoder.decode(msg.data.buffer));
+      while ((msg = await this.receiveFor(localId))) {
         if (msg.command === CMD_WRTE) {
           await this.send({ command: CMD_OKAY, arg0: msg.arg1, arg1: msg.arg0 });
           if (msg.data) parts.push(decoder.decode(msg.data.buffer));
         } else if (msg.command === CMD_CLSE) {
           await this.send({ command: CMD_CLSE, arg0: msg.arg1, arg1: msg.arg0 });
           break;
+        } else if (msg.command === CMD_OKAY) {
+          continue;
         } else {
           throw new Error('未知 ADB 命令');
         }
       }
+      this.freeStream(localId);
       return parts.length ? parts.join('') : null;
     }
 
@@ -449,14 +474,19 @@
       if (!this.isSupportedFeature(SHELL_V2)) {
         return this.exec(command);
       }
-      await this.send({ command: CMD_OPEN, arg0: 1, arg1: 0, data: `shell,v2,raw:${command}` });
-      await this.receiveExpect({ command: CMD_OKAY });
+      const localId = this.allocLocalId();
+      this._pendingOpen = { localId };
+      await this.send({ command: CMD_OPEN, arg0: localId, arg1: 0, data: `shell,v2,raw:${command}` });
       const stdout = [], stderr = [];
       const decoder = new TextDecoder();
       let exitCode;
       let msg;
-      while ((msg = await this.receive())) {
-        if (msg.command === CMD_WRTE) {
+      let gotFirst = false;
+      while ((msg = await this.receiveFor(localId))) {
+        if (!gotFirst) { this._pendingOpen = null; gotFirst = true; }
+        if (msg.command === CMD_OKAY) {
+          continue;
+        } else if (msg.command === CMD_WRTE) {
           await this.send({ command: CMD_OKAY, arg0: msg.arg1, arg1: msg.arg0 });
           if (!msg.data) continue;
           const streamId = msg.data.getInt8(0);
@@ -470,13 +500,12 @@
           }
         } else if (msg.command === CMD_CLSE) {
           await this.send({ command: CMD_CLSE, arg0: msg.arg1, arg1: msg.arg0 });
-          await this.receiveExpect({ command: CMD_CLSE });
-          try { await timeout(this.receiveExpect({ command: CMD_CLSE }), 300); } catch {}
           break;
         } else {
           throw new Error('未知 ADB 命令');
         }
       }
+      this.freeStream(localId);
       return {
         stdout: stdout.length ? stdout.join('') : null,
         stderr: stderr.length ? stderr.join('') : null,
@@ -501,6 +530,20 @@
       return data;
     }
 
+    async flushRead() {
+      try {
+        while (true) {
+          const { data } = await Promise.race([
+            this.device.transferIn(this.endpoints.in, 16384),
+            new Promise((_, reject) => setTimeout(reject, 50))
+          ]);
+          if (!data || data.byteLength === 0) break;
+        }
+      } catch {}
+      this._msgQueues.clear();
+      this._pendingOpen = null;
+    }
+
     async write(buffer) {
       if (!this.device || !this.endpoints) throw new Error('设备未连接');
       const { bytesWritten, status } = await this.device.transferOut(this.endpoints.out, buffer);
@@ -509,12 +552,19 @@
     }
 
     async receive() {
+      const VALID_CMDS = [CMD_CNXN, CMD_OPEN, CMD_OKAY, CMD_CLSE, CMD_WRTE, CMD_AUTH];
       const header = await this.read(24);
       if (!header) throw new Error('响应为空');
       const cmd = header.getUint32(0, true);
+      if (!VALID_CMDS.includes(cmd)) {
+        throw new Error(`ADB 协议数据损坏: command=0x${cmd.toString(16)}`);
+      }
       const arg0 = header.getUint32(4, true);
       const arg1 = header.getUint32(8, true);
       const dataLen = header.getUint32(12, true);
+      if (dataLen > 16 * 1024 * 1024) {
+        throw new Error(`ADB 数据长度异常: ${dataLen} bytes (command=0x${cmd.toString(16)})`);
+      }
       const data = dataLen > 0 ? await this.read(dataLen) : undefined;
       return { command: cmd, arg0, arg1, data };
     }
@@ -543,6 +593,33 @@
         }
       }
       return msg;
+    }
+
+    allocLocalId() {
+      return ++this._nextLocalId;
+    }
+
+    async receiveFor(localId) {
+      const queue = this._msgQueues.get(localId);
+      if (queue && queue.length > 0) return queue.shift();
+      while (true) {
+        const msg = await this.receive();
+        if (msg.arg1 === localId) return msg;
+        if (msg.arg1 === 0 && msg.command === CMD_OKAY) {
+          const pending = this._pendingOpen;
+          if (pending && pending.localId === localId) {
+            this._pendingOpen = null;
+            return msg;
+          }
+        }
+        let q = this._msgQueues.get(msg.arg1);
+        if (!q) { q = []; this._msgQueues.set(msg.arg1, q); }
+        q.push(msg);
+      }
+    }
+
+    freeStream(localId) {
+      this._msgQueues.delete(localId);
     }
   }
 
@@ -576,14 +653,19 @@
     }
 
     async shellCommand(command) {
-      if (this._shellV2) {
-        const result = await this.client.execV2(command);
-        if (result.exitCode !== 0 && result.stderr) {
-          throw new Error(result.stderr);
+      try {
+        if (this._shellV2) {
+          const result = await this.client.execV2(command);
+          if (result.exitCode !== 0 && result.stderr) {
+            throw new Error(result.stderr);
+          }
+          return result.stdout || '';
         }
-        return result.stdout || '';
+        return await this.client.exec(command) || '';
+      } catch (e) {
+        await this.client.flushRead();
+        throw e;
       }
-      return await this.client.exec(command) || '';
     }
 
     async *shellStream(command) {
@@ -621,6 +703,7 @@
         return entries;
       } catch (e) {
         try { await this._closeSync(stream); } catch {}
+        await this.client.flushRead();
         throw e;
       }
     }
@@ -655,6 +738,7 @@
         return this._concatBuffers(chunks);
       } catch (e) {
         try { await this._closeSync(stream); } catch {}
+        await this.client.flushRead();
         throw e;
       }
     }
@@ -701,6 +785,7 @@
         await this._closeSync(stream);
       } catch (e) {
         try { await this._closeSync(stream); } catch {}
+        await this.client.flushRead();
         throw e;
       }
     }
@@ -777,13 +862,18 @@
     }
 
     // === Sync protocol helpers ===
-    _localId = 0;
     _streams = new Map();
 
     async _openSync() {
-      const localId = ++this._localId;
+      const localId = this.client.allocLocalId();
+      this.client._pendingOpen = { localId };
       await this.client.send({ command: CMD_OPEN, arg0: localId, arg1: 0, data: 'sync:' });
-      const msg = await this.client.receiveExpect({ command: CMD_OKAY });
+      const msg = await this.client.receiveFor(localId);
+      if (msg.command !== CMD_OKAY) {
+        this.client._pendingOpen = null;
+        await this.client.flushRead();
+        throw new Error('ADB sync 打开失败');
+      }
       const remoteId = msg.arg0;
       const stream = { localId, remoteId };
       this._streams.set(localId, stream);
@@ -799,7 +889,7 @@
     }
 
     async _syncRead(stream) {
-      const msg = await this.client.receive();
+      const msg = await this.client.receiveFor(stream.localId);
       if (msg.command === CMD_CLSE) return { type: SYNC_DONE };
       if (msg.command !== CMD_WRTE) return { type: 0 };
       const dv = new DataView(msg.data.buffer);
@@ -814,6 +904,7 @@
         await this.client.send({ command: CMD_CLSE, arg0: stream.localId, arg1: stream.remoteId });
       } catch {}
       this._streams.delete(stream.localId);
+      this.client.freeStream(stream.localId);
     }
 
     _concatBuffers(buffers) {
