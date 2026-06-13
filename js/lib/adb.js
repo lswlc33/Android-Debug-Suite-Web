@@ -407,9 +407,17 @@
       if (msg.command !== CMD_CNXN) {
         if (msg.command === CMD_AUTH) {
           await this.send({ command: CMD_AUTH, arg0: AUTH_RSAPUBLICKEY, data: publicKey });
-          const fp = keyFingerprint(publicKey);
+          let fp;
+          try { fp = keyFingerprint(publicKey); } catch { fp = null; }
           userGestureCallback?.(fp);
-          msg = await this.receiveExpect({ command: CMD_CNXN });
+          while (msg.command !== CMD_CNXN) {
+            msg = await this.receive();
+            if (msg.command === CMD_AUTH) {
+              await this.send({ command: CMD_AUTH, arg0: AUTH_SIGNATURE, data: await rsaSign(privateKey, msg.data.buffer) });
+            } else if (msg.command !== CMD_CNXN) {
+              throw new Error('ADB 认证失败：未知响应');
+            }
+          }
         } else {
           throw new Error('ADB 认证失败：未知响应');
         }
